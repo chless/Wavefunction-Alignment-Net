@@ -6,11 +6,26 @@ import torch
 import torch.nn as nn
 from pyexpat.model import XML_CQUANT_OPT
 
-from ocpmodels.common.registry import registry
-from ocpmodels.common.utils import conditional_grad
-from ocpmodels.models.base import BaseModel
-from ocpmodels.models.scn.sampling import CalcSpherePoints
-from ocpmodels.models.scn.smearing import (
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.common.registry import registry
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.common.utils import conditional_grad
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.models.base import BaseModel
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.models.scn.sampling import CalcSpherePoints
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.models.scn.smearing import (
     GaussianSmearing,
     LinearSigmoidSmearing,
     SigmoidSmearing,
@@ -719,7 +734,12 @@ class EquiformerV2_OC20Backbone(BaseModel):
             raise ValueError
         
         # Initialize the sizes of radial functions (input channels and 2 hidden channels)
-        self.edge_channels_list = [int(self.distance_expansion.num_output)] + [self.edge_channels] * 2
+        # TODO: Remove this debugging value
+        #self.edge_channels_list = [int(self.distance_expansion.num_output)] + [self.edge_channels] * 2
+        #<DEBUG>
+        debugging_value = 17
+        self.edge_channels_list = [debugging_value] + [self.edge_channels] * 2
+        #</DEBUG>
 
         # Initialize atom edge embedding
         if self.share_atom_edge_embedding and self.use_atom_edge_embedding:
