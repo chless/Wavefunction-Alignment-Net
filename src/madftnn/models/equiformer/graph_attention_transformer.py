@@ -24,7 +24,13 @@ from .drop import EquivariantDropout, EquivariantScalarsDropout, GraphDropPath
 from .gaussian_rbf import GaussianRadialBasisLayer
 
 # for bessel radial basis
-from ocpmodels.models.gemnet.layers.radial_basis import RadialBasis
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.models.gemnet.layers.radial_basis import RadialBasis
 
 
 _RESCALE = True

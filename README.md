@@ -64,6 +64,15 @@ conda activate madft_nn
 
 # Install the custom CUDA DFT wheel (if needed)
 pip install cudft-0.2.6-cp310-cp310-linux_x86_64.whl
+
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index https://download.pytorch.org/whl/cu126
+pip install torch_geometric==2.3.0
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu126.html
+
+git clone https://github.com/facebookresearch/fairchem.git
+cd fairchem
+git checkout a2f07eb852d2a98a7bb7c4213b13461de0cd78ef
+pip install -e .
 ```
 
 ### Key Dependencies

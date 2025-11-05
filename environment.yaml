@@ -17,10 +17,10 @@ dependencies:
   - numba
   - wandb
   # torch
-  - pytorch::pytorch=2.1.0
+  - pytorch::pytorch=2.4.1
   - pytorch::torchvision
-  - pytorch::torchaudio=2.1.0
-  - pytorch::pytorch-cuda=12.1
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=12.6
   - pytorch-lightning
   - tensorboardx
   # QHNet
@@ -49,7 +49,7 @@ dependencies:
     # QHNet
     - ase
     - torch_ema
-    - --find-links https://data.pyg.org/whl/torch-2.1.0+cu121.html
+    - --find-links https://data.pyg.org/whl/torch-2.1.0+cu126.html
     - pyg-lib
     - torch_scatter 
     - torch_sparse 
@@ -59,4 +59,4 @@ dependencies:
     # amlt
     - --extra-index-url https://msrpypi.azurewebsites.net/nightly/leloojoo
     - amlt>=10.0.0a0
-    - git+https://github.com/Open-Catalyst-Project/ocp.git
+    #- git+https://github.com/Open-Catalyst-Project/ocp.git

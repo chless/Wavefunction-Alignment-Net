@@ -43,8 +43,14 @@ from .graph_attention_transformer import (get_norm_layer,
 )
 from .gaussian_rbf import GaussianRadialBasisLayer
 
-from ocpmodels.common.registry import registry
-from ocpmodels.common.utils import (
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.common.registry import registry
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.common.utils import (
     conditional_grad,
     get_pbc_distances,
     radius_graph_pbc,

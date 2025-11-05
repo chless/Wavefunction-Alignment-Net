@@ -7,7 +7,8 @@ from torch.autograd import grad
 from torch.nn import Embedding, LayerNorm, Linear, Parameter
 
 from torch_geometric.nn import MessagePassing, radius_graph
-from torch_geometric.utils import scatter
+from torch_scatter import scatter
+#from torch_geometric.utils import scatter
 from .utils import construct_o3irrps
 
 

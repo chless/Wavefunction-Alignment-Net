@@ -10,7 +10,10 @@ from .QHNet import Expansion, ExponentialBernsteinRadialBasisFunctions, SelfNetL
 from .QHNet_modify import PairNetLayer_symmetry
 from .utils import construct_o3irrps_base, construct_o3irrps, get_full_graph, get_transpose_index
 from madftnn.dataset.buildblock import get_conv_variable_lin,block2matrix
-from ocpmodels.models.gemnet.layers.radial_basis import RadialBasis
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+from fairchem.ocpmodels.models.gemnet.layers.radial_basis import RadialBasis
 
 
 class HamiHead(nn.Module):
