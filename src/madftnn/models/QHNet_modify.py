@@ -658,7 +658,9 @@ class Equiformerv2SO2(nn.Module):
         batch_data['natoms'] = scatter(torch.ones_like(batch_data.batch), batch_data.batch, dim=0, reduce='sum')
         batch_data.atomic_numbers = batch_data.atomic_numbers.squeeze()
         batch_data['node_attr'] = self.node_embedding(batch_data.atomic_numbers)
-        batch_data.pos = batch_data.pos[0]
+        # Flatten pos from (batch_size, num_atoms, 3) to (total_atoms, 3) to match batch tensor
+        if batch_data.pos.dim() == 3:
+            batch_data.pos = batch_data.pos.view(-1, 3)
         edge_index = radius_graph(batch_data.pos, self.max_radius, batch_data.batch, max_num_neighbors=100)
         batch_data.edge_index = edge_index
 
