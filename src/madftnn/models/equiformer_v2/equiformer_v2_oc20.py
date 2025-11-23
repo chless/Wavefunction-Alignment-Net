@@ -13,7 +13,15 @@ from fairchem.ocpmodels.common.registry import registry
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
-from fairchem.ocpmodels.common.utils import conditional_grad
+from fairchem.ocpmodels.common.utils import (
+    compute_neighbors,
+    conditional_grad,
+    get_max_neighbors_mask,
+    get_pbc_distances,
+    radius_graph_pbc,
+)
+from torch_cluster.radius import radius_graph
+from torch_scatter import segment_csr
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
@@ -247,7 +255,7 @@ class EquiformerV2_OC20(BaseModel):
             raise ValueError
         
         # Initialize the sizes of radial functions (input channels and 2 hidden channels)
-        self.edge_channels_list = [int(self.distance_expansion.num_output)] + [self.edge_channels] * 2
+        self.edge_channels_list = [self.distance_expansion.offset.shape[0]] + [self.edge_channels] * 2
 
         # Initialize atom edge embedding
         if self.share_atom_edge_embedding and self.use_atom_edge_embedding:
@@ -376,6 +384,63 @@ class EquiformerV2_OC20(BaseModel):
     def get_fii(self, data):
         pass
 
+    def generate_graph(self, data):
+        """Generate a radius/nearest neighbor graph."""
+        cutoff = self.cutoff
+        max_neighbors = self.max_neighbors
+        otf_graph = cutoff > 6 or max_neighbors > 50 or self.otf_graph
+        if self.use_pbc:
+            if otf_graph:
+                edge_index, cell_offsets, num_neighbors = radius_graph_pbc(
+                    data, cutoff, max_neighbors
+                )
+            else:
+                edge_index = data.edge_index
+                cell_offsets = data.cell_offsets
+                num_neighbors = data.neighbors
+
+            out = get_pbc_distances(
+                data.pos,
+                edge_index,
+                data.cell,
+                cell_offsets,
+                num_neighbors,
+                return_offsets=False,
+                return_distance_vec=True,
+            )
+
+            edge_index = out["edge_index"]
+            edge_dist = out["distances"]
+            # These vectors actually point in the opposite direction.
+            # But we want to use col as idx_t for efficient aggregation.
+            edge_vector = -out["distance_vec"] / edge_dist[:, None]
+            cell_offsets = -cell_offsets  # a - c + offset
+        else:
+            otf_graph = True
+            edge_index = radius_graph(
+                data.pos,
+                r=self.cutoff,
+                batch=data.batch,
+                max_num_neighbors=max_neighbors,
+            )
+            j, i = edge_index
+            distance_vec = data.pos[j] - data.pos[i]
+
+            edge_dist = distance_vec.norm(dim=-1)
+            edge_vector = -distance_vec / edge_dist[:, None]
+            cell_offsets = torch.zeros(
+                edge_index.shape[1], 3, device=data.pos.device
+            )
+            num_neighbors = compute_neighbors(data, edge_index)
+
+        return (
+            edge_index,
+            edge_dist,
+            edge_vector,
+            cell_offsets,
+            cell_offset_distances,
+            num_neighbors,
+        )
 
     @conditional_grad(torch.enable_grad())
     def forward(self, data):
@@ -734,12 +799,7 @@ class EquiformerV2_OC20Backbone(BaseModel):
             raise ValueError
         
         # Initialize the sizes of radial functions (input channels and 2 hidden channels)
-        # TODO: Remove this debugging value
-        #self.edge_channels_list = [int(self.distance_expansion.num_output)] + [self.edge_channels] * 2
-        #<DEBUG>
-        debugging_value = 17
-        self.edge_channels_list = [debugging_value] + [self.edge_channels] * 2
-        #</DEBUG>
+        self.edge_channels_list = [self.distance_expansion.offset.shape[0]] + [self.edge_channels] * 2
 
         # Initialize atom edge embedding
         if self.share_atom_edge_embedding and self.use_atom_edge_embedding:
@@ -825,6 +885,62 @@ class EquiformerV2_OC20Backbone(BaseModel):
         self.apply(self._init_weights)
         self.apply(self._uniform_init_rad_func_linear_weights)
 
+    def generate_graph(self, data):
+        """Generate a radius/nearest neighbor graph."""
+        cutoff = self.cutoff
+        max_neighbors = self.max_neighbors
+        otf_graph = cutoff > 6 or max_neighbors > 50 or self.otf_graph
+
+        if self.use_pbc:
+            if otf_graph:
+                edge_index, cell_offsets, num_neighbors = radius_graph_pbc(
+                    data, cutoff, max_neighbors
+                )
+            else:
+                edge_index = data.edge_index
+                cell_offsets = data.cell_offsets
+                num_neighbors = data.neighbors
+
+            out = get_pbc_distances(
+                data.pos,
+                edge_index,
+                data.cell,
+                cell_offsets,
+                num_neighbors,
+                return_offsets=True,
+                return_distance_vec=True,
+            )
+
+            edge_index = out["edge_index"]
+            edge_dist = out["distances"]
+            # These vectors actually point in the opposite direction.
+            # But we want to use col as idx_t for efficient aggregation.
+            edge_vector = -out["distance_vec"] / edge_dist[:, None]
+            cell_offsets = -cell_offsets  # a - c + offset
+            cell_offset_distances = out.get("offsets", torch.zeros_like(edge_vector))
+        else:
+            edge_index = radius_graph(
+                data.pos,
+                r=cutoff,
+                batch=data.batch,
+                max_num_neighbors=max_neighbors,
+            )
+            j, i = edge_index
+            distance_vec = data.pos[j] - data.pos[i]
+            edge_dist = distance_vec.norm(dim=-1)
+            edge_vector = -distance_vec / edge_dist[:, None]
+            cell_offsets = torch.zeros(edge_index.shape[1], 3, device=data.pos.device)
+            cell_offset_distances = torch.zeros(edge_index.shape[1], 3, device=data.pos.device)
+            num_neighbors = compute_neighbors(data, edge_index)
+
+        return (
+            edge_index,
+            edge_dist,
+            edge_vector,
+            cell_offsets,
+            cell_offset_distances,
+            num_neighbors,
+        )
 
     @conditional_grad(torch.enable_grad())
     def forward(self, data):
