@@ -26,7 +26,6 @@ from datetime import datetime
 import random
 import hydra
 from omegaconf import DictConfig, OmegaConf
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
 # Add src in root folder
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +58,8 @@ def cli(config: DictConfig) -> None:
         # Path(config.log_dir).mkdir(parents=True, exist_ok=True)
     with open(config.log_dir+"/config.yaml", 'w') as file:OmegaConf.save(config=config, f=file.name)
 
+    # Set ngpus from devices if devices is specified
+    config.ngpus = len(config.devices)
 
     config.batch_size = config.batch_size // config.ngpus if config.ngpus > 1 else config.batch_size
     if config.inference_batch_size is None:
@@ -125,7 +126,7 @@ def main(config):
     trainer = pl.Trainer(
         max_epochs=config.num_epochs,
         max_steps=config.max_steps,
-        devices=list(range(config.ngpus)),
+        devices=config.devices,
         num_nodes=config.num_nodes,
         default_root_dir=config.log_dir,
         callbacks=callbacks,

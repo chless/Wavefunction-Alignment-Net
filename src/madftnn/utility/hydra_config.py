@@ -74,7 +74,7 @@ class Config(BaseSchema):
     ed_type: str = 'naive'
     sparse_loss: bool = False
     sparse_loss_coeff: float = 1e-3
-    ngpus: int = 1
+    devices: Any = None  # specify GPU device IDs, e.g., [5] for GPU 5
     num_nodes: int = 1
     gradient_clip_val: Any = None
     early_stopping_patience: int = 30

@@ -58,7 +58,7 @@ hami_val_loss: 'mae'
 sparse_loss: false
 sparse_loss_coeff: 1e-5
 # orbital_energy_train_loss: 'mse'
-ngpus: 1
+devices: [5]  # specify GPU device IDs, e.g., [5] for GPU 5, or [0,1] for multi-GPU. ngpus is derived from this.
 num_nodes: 1
 precision: 32 # the precison for training, can use 16 for mixed precision
 gradient_clip_val: 1.0
