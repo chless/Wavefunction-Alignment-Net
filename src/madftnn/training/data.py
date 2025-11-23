@@ -142,10 +142,12 @@ class DataModule(LightningDataModule):
         if stage == "train":
             batch_size = self.config["batch_size"]
             shuffle = True
+            drop_last = True  # Drop incomplete batches during training for stable gradients
         elif stage in ["val", "test"]:
             batch_size = self.config["inference_batch_size"]
             shuffle = False
-            
+            drop_last = False  # Keep all samples for val/test evaluation
+
         num_batches = self._get_num_batches(len(dataset),batch_size)
         dl = DataLoader(
             dataset=dataset,
@@ -154,7 +156,7 @@ class DataModule(LightningDataModule):
             num_workers=self.config["dataloader_num_workers"],
             collate_fn = collate_fn_unified(long_cutoff_upper = 9,unit = self.config["unit"]),
             # max_num_batches=num_batches,
-            drop_last=True,
+            drop_last=drop_last,
             pin_memory=True,
         )
 
