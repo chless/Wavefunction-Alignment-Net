@@ -148,7 +148,7 @@ def main(config):
 
     # use previous ckpt if have one
     ckpt_files = glob.glob(os.path.join(config.log_dir, '*.ckpt'))  
-    print(os.path.join(config.log_dir, '*.ckpt'))
+    print("loading checkpoint from:", os.path.join(config.log_dir, '*.ckpt'))
     # ckpt_files=False
     if ckpt_files:  
         latest_file = max(ckpt_files, key=os.path.getctime)  
@@ -156,12 +156,21 @@ def main(config):
     else:  
         print("No .ckpt files found in the folder.")
         latest_file = None
-    trainer.fit(model, data, ckpt_path=latest_file)
+    if config.mode == "train":
+        trainer.fit(model, data, ckpt_path=latest_file)
 
-    # run test set after completing the fit
-    latest_file = get_latest_ckpt(config.log_dir)
-    print(latest_file,config.log_dir)
-    trainer.test(model, data,ckpt_path=latest_file)
+        # run test set after completing the fit
+        latest_file = get_latest_ckpt(config.log_dir)
+        print(latest_file,config.log_dir)
+        trainer.test(model, data,ckpt_path=latest_file)
+    elif config.mode == "test":
+        latest_file = get_latest_ckpt(config.log_dir)
+        print(latest_file,config.log_dir)
+        trainer.test(model, data,ckpt_path=latest_file)
+    elif config.mode == "predict":
+        raise ValueError("Predict mode is not supported yet")
+    else:
+        raise ValueError("Mode not supported")
 
 
 if __name__ == "__main__":
