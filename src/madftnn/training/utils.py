@@ -53,16 +53,15 @@ def train_val_test_split(dset_len, train_size, val_size, test_size, seed, order=
         idxs = np.random.default_rng(seed).permutation(idxs)
 
     idx_train = idxs[:train_size]
-    # idx_train = idxs[1]
-    # idx_val = idxs[train_size : train_size + val_size]
-    # idx_test = idxs[train_size + val_size : total]
+    idx_val = idxs[train_size : train_size + val_size]
+    idx_test = idxs[train_size + val_size : total]
 
     if order is not None:
         idx_train = [order[i] for i in idx_train]
-        # idx_val = [order[i] for i in idx_val]
-        # idx_test = [order[i] for i in idx_test]
+        idx_val = [order[i] for i in idx_val]
+        idx_test = [order[i] for i in idx_test]
 
-    return np.array(idx_train), np.array([]), np.array([])
+    return np.array(idx_train), np.array(idx_val), np.array(idx_test)
 
 
 def make_splits(
