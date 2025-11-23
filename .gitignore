@@ -176,3 +176,6 @@ local_files*
 outputs/
 eq2_31M_ec4_allmd.pt
 eq2_153M_ec4_allmd.pt
+
+all_checkpoints/
+*.dat
