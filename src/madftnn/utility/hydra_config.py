@@ -37,6 +37,8 @@ class Config(BaseSchema):
     seed: int = 0
     job_id: str = "auto"
     log_dir: str = "./tmp"
+    mode: str = "train"  # "train" or "test"
+    resume_from_checkpoint: bool = True  # Whether to resume from latest checkpoint
     schedule: Dict[str, Any] = MISSING
     model: Dict[str, Any] = MISSING
     wandb: Dict[str, Any] = MISSING
