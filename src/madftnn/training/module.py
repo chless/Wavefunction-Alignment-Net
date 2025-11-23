@@ -32,6 +32,9 @@ class FloatCastDatasetWrapper(T.BaseTransform):
                 setattr(data, key, value.to(self._dtype))
         return data
 
+    def __call__(self, data):
+        return self.forward(data)
+
 class ErrorMetric():
     def __init__(self,loss_weight):
         # if loss_weight == 0:
