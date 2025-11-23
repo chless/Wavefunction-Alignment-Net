@@ -159,7 +159,7 @@ class HamiHead(nn.Module):
         return rebuildfocks
 
     def forward(self, data):
-        if 'fii' not in data.keys():
+        if 'fii' not in data.keys:
             full_edge_index = get_full_graph(data)
             data["full_edge_index"] = full_edge_index
             
@@ -359,7 +359,7 @@ class HamiHeadSymmetry(nn.Module):
 
         
     def forward(self, data):
-        if 'fii' not in data.keys() or "fij" not in data.keys():
+        if 'fii' not in data.keys or "fij" not in data.keys:
             full_edge_index = get_full_graph(data)
             data["non_diag_hamiltonian"] = data["non_diag_hamiltonian"][full_edge_index[0]>full_edge_index[1]]
             data['non_diag_mask'] = data["non_diag_mask"][full_edge_index[0]>full_edge_index[1]]

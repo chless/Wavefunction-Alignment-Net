@@ -164,10 +164,10 @@ class HamiHead_uuw(nn.Module):
         return rebuildfocks
 
     def forward(self, data):
-        if 'fii' not in data.keys():
+        if 'fii' not in data.keys:
             full_edge_index = get_full_graph(data)
             data["full_edge_index"] = full_edge_index
-            
+
             full_edge_vec = data.pos[full_edge_index[0].long()] - data.pos[full_edge_index[1].long()]
             data.full_edge_attr = self.rbf(full_edge_vec.norm(dim=-1).unsqueeze(-1)).squeeze().type(data.pos.type())
             data.full_edge_sh = o3.spherical_harmonics(
@@ -367,7 +367,7 @@ class HamiHeadSymmetry_uuw(nn.Module):
 
         
     def forward(self, data):
-        if 'fii' not in data.keys() or "fij" not in data.keys():
+        if 'fii' not in data.keys or "fij" not in data.keys:
             full_edge_index = get_full_graph(data)
             data["non_diag_hamiltonian"] = data["non_diag_hamiltonian"][full_edge_index[0]>full_edge_index[1]]
             data['non_diag_mask'] = data["non_diag_mask"][full_edge_index[0]>full_edge_index[1]]
@@ -626,7 +626,7 @@ class HamiHeadSymmetry_uuw_multihead(nn.Module):
         long_indices = long_indices[~torch.isin(long_indices, mid_indices)] 
         mid_indices = mid_indices[~torch.isin(mid_indices, short_indices)]
 
-        if 'fii' not in data.keys() or "fij" not in data.keys():
+        if 'fii' not in data.keys or "fij" not in data.keys:
             data["non_diag_hamiltonian"] = data["non_diag_hamiltonian"][full_edge_index[0]>full_edge_index[1]]
             data['non_diag_mask'] = data["non_diag_mask"][full_edge_index[0]>full_edge_index[1]]
             data['non_diag_ocp_mask'] = data["non_diag_ocp_mask"][full_edge_index[0]>full_edge_index[1]]
