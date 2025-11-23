@@ -21,6 +21,8 @@ import lmdb
 import glob
 from .buildblock import *
 import copy
+from madftnn.dataset.utils_escflow import AOData, Onsite_3idx_Overlap_Integral, build_molecule, build_AO_index
+from madftnn.dataset.matrix_transforms import pack_upper_triangle, unpack_upper_triangle, _matrix_transform_single, get_convention_dict, _cut_matrix_3d, _cut_matrix_3d_last
 
 class HamiltonianDataset_qhnet_clean(torch.utils.data.Dataset):
     def __init__(
@@ -141,6 +143,18 @@ def get_data_default_config(data_name):
                         0.0000,0.0000,0.0000,0.0000,0.0000,
                         -214228.1250,-249841.3906])
         system_ref = 0.
+    # mdi7 datasets
+    elif any(name in data_name.lower() for name in [
+        "water",
+        "ethanol",
+        "malondialdehyde",
+        "uracil",
+        "aspirin",
+        "aspirin",
+    ]):
+        atom_reference = np.zeros([100])
+        system_ref = 0.
+        train_ratio,val_ratio,test_ratio = 0.8,0.1,0.1
     else:
         atom_reference = np.zeros([20])
         system_ref = SYSTEM_REF[data_name]
@@ -168,9 +182,9 @@ class LmdbDataset(Dataset):
     """
     energy = 'energy'
     forces = 'forces'
-    def __init__(self, path, 
+    def __init__(self, path,
                  data_name = "pubchem",
-                 transforms = [], 
+                 transforms = [],
                  enable_hami = True,
                  old_blockbuild = False,
                  remove_init = False,
@@ -178,6 +192,9 @@ class LmdbDataset(Dataset):
                  Htoblock_otf = True, ## on save H matrix, H to block is process in collate unifined for memory saving.
                  basis = "def2-tzvp"):
         super(LmdbDataset, self).__init__()
+        self.path = path
+        self.data_name = data_name
+        self.basis = basis
         if data_name.lower() == "pubchem":
             if basis != "def2-tzvp":
                 raise ValueError("sorry, when using pubchem the basis should be def2-tzvp")
@@ -188,7 +205,6 @@ class LmdbDataset(Dataset):
                 db_paths.append(path)
             else:
                 db_paths.extend(glob.glob(path+"/*.lmdb"))
-                
         elif isinstance(path,list):
             for p in path:
                 if p.endswith("lmdb"):
@@ -212,24 +228,163 @@ class LmdbDataset(Dataset):
                 self.conv, _, self.mask,_ = get_conv_variable_lin(basis)
             else:
                 self.conv, self.orbitals_ref, self.mask,self.chemical_symbols = get_conv_variable(basis)
+        if "escflow" in self.data_name:
+            self.set_attr_escflow_datset()
+
+    def set_attr_escflow_datset(self):
+        self.set_atoms()
+        self.Q_dict = Onsite_3idx_Overlap_Integral(atom_list=self.atom_list, basis=self.basis).Q_table()
+        self.convention_dict = get_convention_dict()
+        self.setup_Q()
+
+    def set_atoms(self):
+        name = self.data_name.lower()
+        if "water" in name:
+            self.atoms = [8, 1, 1]
+            self.atom_list = ["O", "H"]
+            self.hamiltonian_size = 24
+        elif "ethanol" in name:
+            self.atoms = [6, 6, 8, 1, 1, 1, 1, 1, 1]
+            self.atom_list = ["C", "O", "H"]
+            self.hamiltonian_size = 72
+        elif "malondialdehyde" in name:
+            self.atoms = [6, 6, 6, 8, 8, 1, 1, 1, 1]
+            self.atom_list = ["C", "O", "H"]
+            self.hamiltonian_size = 90
+        elif "uracil" in name:
+            self.atoms = [6, 6, 7, 6, 7, 6, 8, 8, 1, 1, 1, 1]
+            self.atom_list = ["C", "N", "O", "H"]
+            self.hamiltonian_size = 132
+        elif "aspirin" in name:
+            self.atoms = [6, 6, 6, 6, 6, 6, 6, 8, 8, 8, 6, 6, 8, 1, 1, 1, 1, 1, 1, 1, 1]
+            self.atom_list = ["C", "O", "H"]
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+    def set_orbitals(self):
+        orbitals_ref = {}
+        orbitals_ref[1] = np.array([0, 0, 1])  # H: 2s 1p
+        orbitals_ref[6] = np.array([0, 0, 0, 1, 1, 2])  # C: 3s 2p 1d
+        orbitals_ref[7] = np.array([0, 0, 0, 1, 1, 2])  # N: 3s 2p 1d
+        orbitals_ref[8] = np.array([0, 0, 0, 1, 1, 2])  # O: 3s 2p 1d
+        self.orbitals_ref = orbitals_ref
+
+    @staticmethod
+    def construct_orbital_l_index(AO_lm_index):
+        idx = 0
+        AO_l_index = []
+        while True:
+            if idx >= len(AO_lm_index):
+                break
+            AO_l_index.append(AO_lm_index[idx].item())
+            idx += 2 * AO_lm_index[idx] + 1
+        return torch.tensor(AO_l_index)
 
     def open_db(self):
         for db_path in self.db_paths:
             self.envs.append(self.connect_db(db_path))
-            length = pickle.loads(
-                self.envs[-1].begin().get("length".encode("ascii"))
-            )
+            # Try to get length from the database
+            length_bytes = self.envs[-1].begin().get("length".encode("ascii"))
+            if length_bytes is not None:
+                # Standard format: length is stored as a pickled value
+                length = pickle.loads(length_bytes)
+            else:
+                # Fallback: use database statistics to get number of entries
+                with self.envs[-1].begin() as txn:
+                    length = txn.stat()['entries']
             self._keys.append(list(range(length)))
- 
         keylens = [len(k) for k in self._keys]
         self._keylen_cumulative = np.cumsum(keylens).tolist()
         self.num_samples = sum(keylens)
 
-           
-   
     def __len__(self):
         return self.num_samples
- 
+
+    @staticmethod
+    def unpack_upper_triangle(packed: np.ndarray, h_dim: int):
+        return unpack_upper_triangle(packed, h_dim)
+
+    def matrix_transform(self, hamiltonian, atoms, convention="pyscf_def2svp_to_e3nn"):
+        return _matrix_transform_single(hamiltonian, atoms, self.convention_dict[convention])
+
+    def get_mol(self, data_dict, orb_energy_and_coeff=False):
+        num_nodes = torch.tensor(data_dict["num_nodes"], dtype=torch.int64)
+        atoms = torch.tensor(np.frombuffer(data_dict["atoms"], np.int32), dtype=torch.int64)
+        pos = torch.tensor(np.frombuffer(data_dict["pos"], np.float64).reshape(-1, 3), dtype=torch.float64)
+        energy = torch.tensor(data_dict["energy"], dtype=torch.float64)
+        force = torch.tensor(np.frombuffer(data_dict["force"], np.float32).reshape(-1, 3), dtype=torch.float64) # unit: meV/Angstrom
+        dft_energy = torch.tensor(data_dict["dft_energy"], dtype=torch.float64)
+        dft_forces = torch.tensor(np.frombuffer(data_dict["dft_forces"], np.float64).reshape(-1, 3), dtype=torch.float64) # unit: Eh/Bohr
+        h_dim = data_dict["h_dim"] # sum of orbital dimensions
+        packed_hamiltonian = np.frombuffer(data_dict["packed_hamiltonian"], np.float64)
+        packed_data_hamiltonian = np.frombuffer(data_dict["packed_data_hamiltonian"], np.float64)
+        packed_ovlp = np.frombuffer(data_dict["packed_overlap"], np.float64)
+        packed_init_ham = np.frombuffer(data_dict["packed_initial_hamiltonian"], np.float64)
+        # packed_dm0 = np.frombuffer(data_dict["packed_dm0"], np.float64)
+        
+        hamiltonian = torch.from_numpy(self.unpack_upper_triangle(packed_hamiltonian, h_dim)).to(torch.float64)
+        data_hamiltonian = torch.from_numpy(self.unpack_upper_triangle(packed_data_hamiltonian, h_dim)).to(torch.float64)
+        overlap_matrix = torch.from_numpy(self.unpack_upper_triangle(packed_ovlp, h_dim)).to(torch.float64)
+        initial_hamiltonian = torch.from_numpy(self.unpack_upper_triangle(packed_init_ham, h_dim)).to(torch.float64)
+        # dm0 = torch.from_numpy(self.unpack_upper_triangle(packed_dm0, h_dim)).to(torch.float64)
+        
+        convention = "pyscf_def2svp_to_e3nn"
+        
+        hamiltonian = self.matrix_transform(hamiltonian, atoms, convention=convention)
+        overlap_matrix = self.matrix_transform(overlap_matrix, atoms, convention=convention)
+        initial_hamiltonian = self.matrix_transform(initial_hamiltonian, atoms, convention=convention)
+        
+        AO_index = build_AO_index(build_molecule(atoms, pos), "def2-svp")
+        AO_l_index = self.construct_orbital_l_index(AO_index[1])
+        
+        edge_index = []
+        for i in range(len(atoms)):
+            for j in range(len(atoms)):
+                if i != j:
+                    edge_index.append([i, j])
+        edge_index = torch.tensor(edge_index, dtype=torch.int64).t().contiguous()
+        full_edge_index = edge_index
+        
+        """
+        ret_data = AOData(
+            pos=pos,
+            atoms=atoms.view(-1, 1),
+            dft_energy=dft_energy.view(1, 1),
+            dft_forces=dft_forces,
+            hamiltonian=hamiltonian.reshape(1, h_dim, h_dim),
+            overlap=overlap_matrix.reshape(1, h_dim, h_dim),
+            init_ham=initial_hamiltonian.reshape(1, h_dim, h_dim),
+            AO_index=AO_index,
+            AO_l_index=AO_l_index,
+            AO_l_index_len=torch.tensor(len(AO_l_index), dtype=torch.int64).view(1, 1),
+            num_atoms=num_nodes.view(1, 1),
+            Q=self.Q,
+            h_dim=torch.tensor(h_dim, dtype=torch.int64).view(1, 1),
+            full_edge_index=full_edge_index,
+        )
+        """
+        ret_data = AOData(
+            pos=pos,
+            atomic_numbers=atoms.view(-1, 1),
+            forces=dft_forces,
+            pyscf_energy=dft_energy.view(1, 1),
+            energy=energy.view(1, 1),
+            fock=hamiltonian.reshape(1, h_dim, h_dim),
+            init_fock=initial_hamiltonian.reshape(1, h_dim, h_dim),
+            
+            #overlap=overlap_matrix.reshape(1, h_dim, h_dim),
+            #AO_index=AO_index,
+            #AO_l_index=AO_l_index,
+            #AO_l_index_len=torch.tensor(len(AO_l_index), dtype=torch.int64).view(1, 1),
+            #num_atoms=num_nodes.view(1, 1),
+            #Q=self.Q,
+            #h_dim=torch.tensor(h_dim, dtype=torch.int64).view(1, 1),
+            #full_edge_index=full_edge_index,
+        )
+
+        return ret_data
+
     def __getitem__(self, idx):
         # Data(file_name='/data/recalculated_data/adequate-worm/GePar3-yl/111255333_pos.npy.npz',
         # atomic_numbers=[68, 1], energy=[1, 1], forces=[68, 3], 
@@ -245,13 +400,22 @@ class LmdbDataset(Dataset):
             el_idx = idx - self._keylen_cumulative[db_idx - 1]
         assert el_idx >= 0
 
-        # Return features.
-        datapoint_pickled = (
-            self.envs[db_idx]
-            .begin()
-            .get(f"{self._keys[db_idx][el_idx]}".encode("ascii"))
-        )
-        data_object = pickle.loads(datapoint_pickled)
+        if "escflow" in self.data_name:
+            db_env = self.envs[db_idx]
+            with db_env.begin() as txn:
+                key = int(idx).to_bytes(length=4, byteorder="big")
+                data_dict = txn.get(key)
+            data_dict = pickle.loads(data_dict)
+            data_object = self.get_mol(data_dict, orb_energy_and_coeff=True)
+        else:
+
+            # Return features.
+            datapoint_pickled = (
+                self.envs[db_idx]
+                .begin()
+                .get(f"{self._keys[db_idx][el_idx]}".encode("ascii"))
+            )
+            data_object = pickle.loads(datapoint_pickled)
         data_object.id = el_idx #f"{db_idx}_{el_idx}"
 
  
@@ -335,12 +499,12 @@ class LmdbDataset(Dataset):
     def connect_db(self, lmdb_path=None):
         env = lmdb.open(
             str(lmdb_path),
-            subdir=False,
+            subdir=True,
             readonly=True,
             lock=False,
             readahead=False,
             meminit=False,
-            max_readers=32,
+            max_readers=1024,
         )
         return env
  
@@ -353,4 +517,86 @@ class LmdbDataset(Dataset):
             self.env.close()
             self.env = None
 
+    def setup_Q(self):
+        Q_blocks = []
+        for l in range(60):
+            block_diag_components = [self.Q_dict[z][l] for z in self.atoms]
+            Q_blocks.append(torch.block_diag(*block_diag_components))
+        Q = torch.stack(Q_blocks)  # [60, h_dim, h_dim]
+        Q = self.matrix_transform(Q, torch.tensor(self.atoms), convention="pyscf_def2svp_to_e3nn").permute(1, 2, 0) #[h_dim, h_dim, 60]
+        Q[:, :, 16:40] = (
+            Q[:, :, 16:40]
+            .reshape(self.hamiltonian_size, self.hamiltonian_size, -1, 3)[:, :, :, [1, 2, 0]]
+            .reshape(self.hamiltonian_size, self.hamiltonian_size, 24)
+        )
+        self.Q = Q
 
+
+def matrix_transform(hamiltonian, atoms, convention):
+    """Transform matrices according to orbital convention using PyTorch.
+    
+    This function reorders and applies sign changes to orbital matrices based on
+    different quantum chemistry software conventions. Different software packages
+    use different orbital ordering and sign conventions.
+    
+    Example:
+        Transform from 6-31G to def2-SVP convention:
+        - 6-31G: p orbitals ordered as [px, py, pz] 
+        - def2-SVP: p orbitals ordered as [py, pz, px]
+        - This function handles the reordering and sign changes
+    
+    Args:
+        hamiltonian (torch.Tensor): Input matrices to transform, shape (..., n_orb, n_orb).
+        atoms (torch.Tensor): Atomic numbers for the molecule (e.g., [6, 1, 1, 1] for CH3).
+        convention_rule (Namespace): Orbital convention to use:
+            - 'pyscf_def2-tzvp': def2-TZVP basis set convention (p: [pz, px, py])
+            - 'pyscf_631G': 6-31G basis set convention (p: [pz, px, py])
+            - 'pyscf_def2svp': def2-SVP basis set convention (p: [py, pz, px])
+            - 'back2pyscf': Convert back to PySCF native convention (p: [pz, px, py])
+              * Use this when you have matrices from other software and need to
+                convert them back to PySCF format for density matrix calculations
+              * Same basis as def2-SVP but with PySCF's native p-orbital ordering
+    
+    Returns:
+        torch.Tensor: Transformed matrices with reordered orbitals and applied sign changes.
+    """
+    conv = convention_rule
+    
+    # Get device from hamiltonian tensor
+    device = hamiltonian.device
+    dtype = hamiltonian.dtype
+    
+    orbitals = ""
+    orbitals_order = []
+    for a in atoms:
+        offset = len(orbitals_order)
+        orbitals += conv.atom_to_orbitals_map[a.item()]
+        orbitals_order += [idx + offset for idx in conv.orbital_order_map[a.item()]]
+
+    transform_indices = []
+    transform_signs = []
+    for orb in orbitals:
+        offset = sum(map(len, transform_indices))
+        map_idx = conv.orbital_idx_map[orb]
+        map_sign = conv.orbital_sign_map[orb]
+        # Convert to torch tensors directly on the correct device
+        transform_indices.append(torch.tensor(map_idx, device=device, dtype=torch.long) + offset)
+        transform_signs.append(torch.tensor(map_sign, device=device, dtype=dtype))
+
+    # Reorder according to orbitals_order
+    transform_indices = [transform_indices[idx] for idx in orbitals_order]
+    transform_signs = [transform_signs[idx] for idx in orbitals_order]
+    
+    # Concatenate using torch.cat instead of np.concatenate
+    transform_indices = torch.cat(transform_indices)
+    transform_signs = torch.cat(transform_signs)
+
+    # Apply transformation using torch indexing
+    hamiltonian_new = hamiltonian[..., transform_indices, :]
+    hamiltonian_new = hamiltonian_new[..., :, transform_indices]
+    
+    # Apply signs using torch operations
+    hamiltonian_new = hamiltonian_new * transform_signs.unsqueeze(-1)
+    hamiltonian_new = hamiltonian_new * transform_signs.unsqueeze(-2)
+
+    return hamiltonian_new
