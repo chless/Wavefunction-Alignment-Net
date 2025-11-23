@@ -86,8 +86,9 @@ def main(config):
         dirpath=config.log_dir,
         monitor="val_loss",
         save_top_k=5,  # -1 to save all
-        every_n_epochs =config.save_interval,
-        filename="{step}-{epoch}-{val_loss}", #{val_loss:.4f}
+        every_n_epochs=config.save_interval,
+        save_last=True,  # Always save the last checkpoint
+        filename="{step}-{epoch}-{val_loss:.4f}",
     ))
     latest_file = get_latest_ckpt(config.log_dir)
     print("latest_file is: ", latest_file)
