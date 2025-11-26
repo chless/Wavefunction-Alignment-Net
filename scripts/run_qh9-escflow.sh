@@ -13,9 +13,9 @@ inference_batch_size=224 \
 schedule=polynomial \
 schedule.lr_warmup_steps=1000 \
 max_steps=300000 \
-train_ratio=0.9 \
-val_ratio=0.06 \
-test_ratio=0.04  \
+train_ratio=0.8 \
+val_ratio=0.1 \
+test_ratio=0.1  \
 gradient_clip_val=5.0 \
 dataset_size=100000
 
