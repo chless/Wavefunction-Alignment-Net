@@ -138,7 +138,7 @@ def collate_fn_unified(long_cutoff_upper = 9, unit = 1):
             if key == 'forces':
                 continue
             if key in ['pos',"atomic_numbers"]:
-                processed[key] = torch.cat([torch.from_numpy(list_of_data[i][key]).unsqueeze(0) for i in range(bs_mol)],dim = 0)
+                processed[key] = torch.cat([torch.from_numpy(list_of_data[i][key]) for i in range(bs_mol)],dim = 0)
             elif key in ['diag_hamiltonian','non_diag_hamiltonian']:
                 processed[key] = torch.cat([torch.from_numpy(list_of_data[i][key]).unsqueeze(0) for i in range(bs_mol)],dim = 0)
                 processed[key] = processed[key]/unit
@@ -152,7 +152,7 @@ def collate_fn_unified(long_cutoff_upper = 9, unit = 1):
                     processed[key].reshape(-1,1)
                 else:
                     processed[key].reshape(-1,3)
-            elif key in ['init_fock', 's1e']:
+            elif key in ['init_fock', 's1e', 'orbital_energy', 'orbital_coeff']:
                 processed[key] = [list_of_data[i][key] for i in range(bs_mol)]
             elif key == "fock":
                 H_block = []

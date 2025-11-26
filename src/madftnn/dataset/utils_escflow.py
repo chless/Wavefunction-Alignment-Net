@@ -787,3 +787,65 @@ def generalized_qr_decomposition(coords, eta):
     Q = Q @ P
     R = P.T @ torch.diag(eta_c) @ R
     return Q, R
+
+def get_all_conventions():
+    """Get all pre-defined orbital conventions.
+    
+    Returns:
+        dict: Dictionary mapping convention names to Namespace configurations
+    """
+    conventions = {}
+    
+    # PSI4 conventions
+    conventions['psi4_def2-tzvppd_to_pyscf'] = build_convention(
+        BASIS_TEMPLATES['def2tzvppd'],
+        'psi4_to_pyscf'
+    )
+    
+    # PySCF to E3NN conventions
+    conventions['pyscf_def2-tzvppd_to_e3nn'] = build_convention(
+        BASIS_TEMPLATES['def2tzvppd'],
+        'pyscf_to_e3nn'
+    )
+    
+    conventions['pyscf_def2-tzvp_to_e3nn'] = build_convention(
+        BASIS_TEMPLATES['def2tzvp'],
+        'pyscf_to_e3nn'
+    )
+    
+    conventions['pyscf_631G_to_e3nn'] = build_convention(
+        BASIS_TEMPLATES['631G'],
+        'pyscf_to_e3nn'
+    )
+    
+    conventions['pyscf_def2svp_to_e3nn'] = build_convention(
+        BASIS_TEMPLATES['def2svp'],
+        'pyscf_to_e3nn'
+    )
+    
+    # E3NN to PySCF conventions (reverse)
+    conventions['e3nn_def2-tzvppd_to_pyscf'] = build_convention(
+        BASIS_TEMPLATES['def2tzvppd'],
+        'e3nn_to_pyscf'
+    )
+    
+    conventions['e3nn_to_pyscf_def2-tzvp'] = build_convention(
+        BASIS_TEMPLATES['def2tzvp'],
+        'e3nn_to_pyscf'
+    )
+    
+    conventions['e3nn_to_pyscf_def2svp'] = build_convention(
+        BASIS_TEMPLATES['def2svp'],
+        'e3nn_to_pyscf'
+    )
+    
+    # Aliases for convenience
+    conventions['back2pyscf'] = conventions['e3nn_to_pyscf_def2svp']
+    conventions['pyscf_def2svp'] = conventions['pyscf_def2svp_to_e3nn']
+    conventions['pyscf_631G'] = conventions['pyscf_631G_to_e3nn']
+    conventions['pyscf_def2-tzvp'] = conventions['pyscf_def2-tzvp_to_e3nn']
+    
+    # For MD17 dataset (ORCA convention, similar to e3nn_to_pyscf_def2svp)
+    conventions['orca_to_e3nn'] = conventions['e3nn_to_pyscf_def2svp']
+    
+    return conventions
