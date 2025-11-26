@@ -1375,7 +1375,7 @@ class QHNet_backbone(nn.Module):
         return node_attr, radius_edges, rbf, edge_sh, torch.cat(all_transpose_index, dim=-1)
 
     def forward(self, batch_data):
-        batch_data.pos = batch_data.pos[0]
+        # batch_data.pos = batch_data.pos[0]  # Removed: pos is already correctly shaped [n_atoms, 3]
         batch_data['ptr'] = torch.cat([torch.Tensor([0]).to(batch_data["molecule_size"].device).int(),
                               torch.cumsum(batch_data["molecule_size"],dim = 0)],dim = 0)
         
