@@ -72,7 +72,12 @@ def get_pyscf_obj_from_dataset(pos,atomic_numbers,  basis: str="def2-svp", xc: s
             mf = factory.generate_cuda_instance(mf)
             return mol, mf, factory
         except:
-            print("CUDA is not available, falling back to CPU")
+            try:
+                from gpu4pyscf.dft import rks
+                mf = rks.RKS(mol, xc=xc).density_fit()
+                return mol, mf, factory
+            except Exception as e:
+                print(f"GPU DFT is not available (madft and gpu4pyscf failed), falling back to CPU: {e}")
     return mol, mf, factory
 
 def get_psycf_obj_from_xyz(file_name: str, basis: str='def2-svp', xc: str='b3lyp5', gpu=False):
@@ -111,7 +116,11 @@ def get_psycf_obj_from_xyz(file_name: str, basis: str='def2-svp', xc: str='b3lyp
             factory = CUDAFactory()
             mf = factory.generate_cuda_instance(mf)
         except:
-            print("CUDA is not available, falling back to CPU")
+            try:
+                from gpu4pyscf.dft import rks
+                mf = rks.RKS(mol, xc=xc).density_fit()
+            except Exception as e:
+                print(f"GPU DFT is not available (madft and gpu4pyscf failed), falling back to CPU: {e}")
     return mol, mf
 
 class SCFCallback:
@@ -128,6 +137,15 @@ class SCFCallback:
         return self.iter_count
 
 def fock_to_dm(mf: scf.RHF, fock: np.ndarray, s1e: np.ndarray = None):
+    # Check if using gpu4pyscf (has cupy arrays)
+    is_gpu4pyscf = 'gpu4pyscf' in type(mf).__module__
+
+    if is_gpu4pyscf:
+        import cupy as cp
+        # Convert numpy arrays to cupy for gpu4pyscf
+        if isinstance(fock, np.ndarray):
+            fock = cp.asarray(fock)
+
     if s1e is None:
         s1e = mf.get_ovlp()
     mo_energy, mo_coeff = mf.eig(fock, s1e)
@@ -166,6 +184,9 @@ def get_energy_from_h(mf: scf.RHF, h: np.ndarray):
     """
     dm = fock_to_dm(mf, h)
     e_tot = mf.energy_tot(dm=dm)
+    # Convert CuPy scalar to Python float if needed
+    if hasattr(e_tot, 'get'):
+        e_tot = float(e_tot.get())
     return e_tot
 
 

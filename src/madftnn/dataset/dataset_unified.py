@@ -21,8 +21,26 @@ import lmdb
 import glob
 from .buildblock import *
 import copy
-from madftnn.dataset.utils_escflow import AOData, Onsite_3idx_Overlap_Integral, build_molecule, build_AO_index
+from madftnn.dataset.utils_escflow import AOData, Onsite_3idx_Overlap_Integral, build_molecule, build_AO_index, get_all_conventions
 from madftnn.dataset.matrix_transforms import pack_upper_triangle, unpack_upper_triangle, _matrix_transform_single, get_convention_dict, _cut_matrix_3d, _cut_matrix_3d_last
+
+MD17_DATASETS = [
+    "water",
+    "ethanol",
+    "malondialdehyde",
+    "uracil",
+    "salicylic_acid",
+    "naphthalene",
+    "aspirin",
+]
+
+QH9_DATASETS = [
+    "qh9",
+]
+
+PUBCHEM_DATASETS = [
+    "pubchem",
+]
 
 class HamiltonianDataset_qhnet_clean(torch.utils.data.Dataset):
     def __init__(
@@ -132,11 +150,11 @@ SYSTEM_REF = {
 def get_data_default_config(data_name):
     # train ratio , val ratio,test ratio can be int or float.
     train_ratio,val_ratio,test_ratio = None,None,None
-    if data_name.lower() == "qh9":
+    if any(name in data_name.lower() for name in QH9_DATASETS):
         train_ratio,val_ratio,test_ratio = 0.8,0.1,0.1
         atom_reference = np.zeros([20])
         system_ref = 0.
-    elif data_name.lower() == "pubchem":
+    elif any(name in data_name.lower() for name in PUBCHEM_DATASETS):
         train_ratio,val_ratio,test_ratio = 0.8,0.1,0.1
         atom_reference = np.array([0.0000, -376.3395, 0.0000, 0.0000, 0.0000,
                         0.0000,-23905.9824,-34351.3164,-47201.4062,0.0000,
@@ -144,14 +162,7 @@ def get_data_default_config(data_name):
                         -214228.1250,-249841.3906])
         system_ref = 0.
     # mdi7 datasets
-    elif any(name in data_name.lower() for name in [
-        "water",
-        "ethanol",
-        "malondialdehyde",
-        "uracil",
-        "aspirin",
-        "aspirin",
-    ]):
+    elif any(name in data_name.lower() for name in MD17_DATASETS):
         atom_reference = np.zeros([100])
         system_ref = 0.
         train_ratio,val_ratio,test_ratio = 0.8,0.1,0.1
@@ -228,14 +239,14 @@ class LmdbDataset(Dataset):
                 self.conv, _, self.mask,_ = get_conv_variable_lin(basis)
             else:
                 self.conv, self.orbitals_ref, self.mask,self.chemical_symbols = get_conv_variable(basis)
-        if "escflow" in self.data_name:
-            self.set_attr_escflow_datset()
+
+        self.set_attr_escflow_datset()
 
     def set_attr_escflow_datset(self):
-        self.set_atoms()
-        self.Q_dict = Onsite_3idx_Overlap_Integral(atom_list=self.atom_list, basis=self.basis).Q_table()
-        self.convention_dict = get_convention_dict()
-        self.setup_Q()
+        #self.set_atoms()
+        #self.Q_dict = Onsite_3idx_Overlap_Integral(atom_list=self.atom_list, basis=self.basis).Q_table()
+        self.set_conventions()
+        #self.setup_Q()
 
     def set_atoms(self):
         name = self.data_name.lower()
@@ -305,35 +316,42 @@ class LmdbDataset(Dataset):
     def unpack_upper_triangle(packed: np.ndarray, h_dim: int):
         return unpack_upper_triangle(packed, h_dim)
 
-    def matrix_transform(self, hamiltonian, atoms, convention="pyscf_def2svp_to_e3nn"):
-        return _matrix_transform_single(hamiltonian, atoms, self.convention_dict[convention])
+    def matrix_transform(self, hamiltonian, atoms):
+        return _matrix_transform_single(hamiltonian, atoms, self.convention_dict[self.convention])
+
+    def set_conventions(self):
+        if any(name in self.data_name.lower() for name in ["water", "ethanol", "malondialdehyde", "uracil", "aspirin"]):
+            self.convention_dict = get_convention_dict()
+            self.convention = "pyscf_def2svp_to_e3nn"
+        elif "qh9" in self.data_name.lower():
+            self.convention_dict = get_convention_dict()
+            self.convention = "pyscf_def2svp_to_e3nn"
+        else:
+            raise NotImplementedError
 
     def get_mol(self, data_dict, orb_energy_and_coeff=False):
         num_nodes = torch.tensor(data_dict["num_nodes"], dtype=torch.int64)
         atoms = torch.tensor(np.frombuffer(data_dict["atoms"], np.int32), dtype=torch.int64)
         pos = torch.tensor(np.frombuffer(data_dict["pos"], np.float64).reshape(-1, 3), dtype=torch.float64)
-        energy = torch.tensor(data_dict["energy"], dtype=torch.float64)
-        force = torch.tensor(np.frombuffer(data_dict["force"], np.float32).reshape(-1, 3), dtype=torch.float64) # unit: meV/Angstrom
         dft_energy = torch.tensor(data_dict["dft_energy"], dtype=torch.float64)
         dft_forces = torch.tensor(np.frombuffer(data_dict["dft_forces"], np.float64).reshape(-1, 3), dtype=torch.float64) # unit: Eh/Bohr
         h_dim = data_dict["h_dim"] # sum of orbital dimensions
         packed_hamiltonian = np.frombuffer(data_dict["packed_hamiltonian"], np.float64)
-        packed_data_hamiltonian = np.frombuffer(data_dict["packed_data_hamiltonian"], np.float64)
-        packed_ovlp = np.frombuffer(data_dict["packed_overlap"], np.float64)
+        packed_overlap = np.frombuffer(data_dict["packed_overlap"], np.float64)
         packed_init_ham = np.frombuffer(data_dict["packed_initial_hamiltonian"], np.float64)
-        # packed_dm0 = np.frombuffer(data_dict["packed_dm0"], np.float64)
+        orbital_energies = np.frombuffer(data_dict["orbital_energies"], np.float64)
+        packed_orbital_coeff = np.frombuffer(data_dict["packed_orbital_coefficients"], np.float64)
+        #packed_dm0 = np.frombuffer(data_dict["packed_dm0"], np.float64)
         
         hamiltonian = torch.from_numpy(self.unpack_upper_triangle(packed_hamiltonian, h_dim)).to(torch.float64)
-        data_hamiltonian = torch.from_numpy(self.unpack_upper_triangle(packed_data_hamiltonian, h_dim)).to(torch.float64)
-        overlap_matrix = torch.from_numpy(self.unpack_upper_triangle(packed_ovlp, h_dim)).to(torch.float64)
+        overlap_matrix = torch.from_numpy(self.unpack_upper_triangle(packed_overlap, h_dim)).to(torch.float64)
         initial_hamiltonian = torch.from_numpy(self.unpack_upper_triangle(packed_init_ham, h_dim)).to(torch.float64)
-        # dm0 = torch.from_numpy(self.unpack_upper_triangle(packed_dm0, h_dim)).to(torch.float64)
+        orbital_coefficients = torch.from_numpy(self.unpack_upper_triangle(packed_orbital_coeff, h_dim)).to(torch.float64)
+
         
-        convention = "pyscf_def2svp_to_e3nn"
-        
-        hamiltonian = self.matrix_transform(hamiltonian, atoms, convention=convention)
-        overlap_matrix = self.matrix_transform(overlap_matrix, atoms, convention=convention)
-        initial_hamiltonian = self.matrix_transform(initial_hamiltonian, atoms, convention=convention)
+        hamiltonian = self.matrix_transform(hamiltonian, atoms)
+        overlap_matrix = self.matrix_transform(overlap_matrix, atoms)
+        initial_hamiltonian = self.matrix_transform(initial_hamiltonian, atoms)
         
         AO_index = build_AO_index(build_molecule(atoms, pos), "def2-svp")
         AO_l_index = self.construct_orbital_l_index(AO_index[1])
@@ -346,11 +364,31 @@ class LmdbDataset(Dataset):
         edge_index = torch.tensor(edge_index, dtype=torch.int64).t().contiguous()
         full_edge_index = edge_index
         
+        ret_data = AOData(
+            pos=pos,
+            atomic_numbers=atoms.view(-1, 1),
+            forces=dft_forces,
+            energy=dft_energy.view(1, 1),
+            fock=hamiltonian.reshape(1, h_dim, h_dim),
+            init_fock=initial_hamiltonian.reshape(1, h_dim, h_dim),
+            overlap=overlap_matrix.reshape(1, h_dim, h_dim),
+            orbital_energies=torch.from_numpy(orbital_energies).reshape(1, h_dim),
+            orbital_coefficients=orbital_coefficients.reshape(1, h_dim, h_dim),
+            
+            #energy=energy.view(1, 1),
+            #AO_index=AO_index,
+            #AO_l_index=AO_l_index,
+            #AO_l_index_len=torch.tensor(len(AO_l_index), dtype=torch.int64).view(1, 1),
+            #num_atoms=num_nodes.view(1, 1),
+            #Q=self.Q,
+            #h_dim=torch.tensor(h_dim, dtype=torch.int64).view(1, 1),
+            #full_edge_index=full_edge_index,
+        )
         """
         ret_data = AOData(
             pos=pos,
             atoms=atoms.view(-1, 1),
-            dft_energy=dft_energy.view(1, 1),
+            pyscf_energy=pyscf_energy.view(1, 1),
             dft_forces=dft_forces,
             hamiltonian=hamiltonian.reshape(1, h_dim, h_dim),
             overlap=overlap_matrix.reshape(1, h_dim, h_dim),
@@ -364,24 +402,6 @@ class LmdbDataset(Dataset):
             full_edge_index=full_edge_index,
         )
         """
-        ret_data = AOData(
-            pos=pos,
-            atomic_numbers=atoms.view(-1, 1),
-            forces=dft_forces,
-            pyscf_energy=dft_energy.view(1, 1),
-            energy=energy.view(1, 1),
-            fock=hamiltonian.reshape(1, h_dim, h_dim),
-            init_fock=initial_hamiltonian.reshape(1, h_dim, h_dim),
-            
-            #overlap=overlap_matrix.reshape(1, h_dim, h_dim),
-            #AO_index=AO_index,
-            #AO_l_index=AO_l_index,
-            #AO_l_index_len=torch.tensor(len(AO_l_index), dtype=torch.int64).view(1, 1),
-            #num_atoms=num_nodes.view(1, 1),
-            #Q=self.Q,
-            #h_dim=torch.tensor(h_dim, dtype=torch.int64).view(1, 1),
-            #full_edge_index=full_edge_index,
-        )
 
         return ret_data
 
@@ -440,7 +460,6 @@ class LmdbDataset(Dataset):
         out["energy"] = energy.astype(np.float32) # this is used from model training, mean/ref is removed.
         
         if self.enable_hami:
-            # out.update({"init_fock":data_object.init_fock.numpy().astype(np.float32)})
             if self.remove_init:
                 data_object.fock = data_object.fock - data_object.init_fock
             if self.Htoblock_otf == True:
@@ -468,7 +487,11 @@ class LmdbDataset(Dataset):
                         'diag_mask': diag_mask,
                         'non_diag_mask': non_diag_mask})
             out.update({"init_fock":data_object.init_fock.numpy().astype(np.float32)})
-            # out.update({"s1e":data_object.s1e.numpy().astype(np.float32)})
+            out.update({"s1e":data_object.overlap.numpy().astype(np.float32)})
+            if hasattr(data_object, 'orbital_energies'):
+                out.update({"orbital_energy":data_object.orbital_energies.numpy().astype(np.float32)})
+            if hasattr(data_object, 'orbital_coefficients'):
+                out.update({"orbital_coeff":data_object.orbital_coefficients.numpy().astype(np.float32)})
 
         return out
     
@@ -523,7 +546,7 @@ class LmdbDataset(Dataset):
             block_diag_components = [self.Q_dict[z][l] for z in self.atoms]
             Q_blocks.append(torch.block_diag(*block_diag_components))
         Q = torch.stack(Q_blocks)  # [60, h_dim, h_dim]
-        Q = self.matrix_transform(Q, torch.tensor(self.atoms), convention="pyscf_def2svp_to_e3nn").permute(1, 2, 0) #[h_dim, h_dim, 60]
+        Q = self.matrix_transform(Q, torch.tensor(self.atoms)).permute(1, 2, 0) #[h_dim, h_dim, 60]
         Q[:, :, 16:40] = (
             Q[:, :, 16:40]
             .reshape(self.hamiltonian_size, self.hamiltonian_size, -1, 3)[:, :, :, [1, 2, 0]]

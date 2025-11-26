@@ -17,6 +17,19 @@ import torch_geometric.transforms as T
 import random
 HATREE_TO_KCAL = 627.5096
 
+def get_overlap_matrix(batch_data, i, start, end, atomic_numbers, device, basis='def2-svp', scale=1.0):
+    """Get overlap matrix from batch_data or compute on-the-fly using PySCF."""
+    if 's1e' in batch_data:
+        overlap_matrix = batch_data['s1e'][i] / scale if scale != 1.0 else batch_data['s1e'][i]
+        return torch.from_numpy(overlap_matrix).to(device)
+    else:
+        # Compute overlap matrix on-the-fly using PySCF
+        pos = batch_data['pos'][start:end].detach().cpu().numpy()
+        atomic_nums = atomic_numbers.detach().cpu().numpy()
+        mol, mf, _ = get_pyscf_obj_from_dataset(pos, atomic_nums, basis=basis, gpu=False)
+        s1e = mf.get_ovlp()
+        return torch.from_numpy(s1e).to(device)
+
 class FloatCastDatasetWrapper(T.BaseTransform):
     """A transform that casts all floating point tensors to a given dtype.
     tensors to a given dtype.
@@ -135,9 +148,9 @@ class HamiltonianError(ErrorMetric):
             loss = loss*weight**0.5
         else:
             loss = loss*weight
-        if metric in ["msemae","maemse"]:
-            error_dict[f'hami_loss_mae'] = weight*torch.mean(torch.abs(diff.detach()))
-            error_dict[f'hami_loss_mse'] = weight*torch.mean((diff.detach())**2)
+        #if metric in ["msemae","maemse"]:
+        error_dict[f'hami_loss_mae'] = weight*torch.mean(torch.abs(diff.detach()))
+        error_dict[f'hami_loss_mse'] = weight*torch.mean((diff.detach())**2)
             
         error_dict['loss']  += loss*self.loss_weight
         error_dict[f'hami_loss_{metric}'] = loss.detach()
@@ -217,13 +230,19 @@ class EnergyHamiError(ErrorMetric):
         # target_hami = build_final_matrix(batch_data,self.basis, sym=True)
         # print(abs(full_hami[0]-target_hami[0]).mean())
 
-        for i in range(batch_size):
+        from tqdm import tqdm
+        iter_bar = tqdm(range(batch_size))
+
+        for i in iter_bar:
             start , end = batch_data['ptr'][i],batch_data['ptr'][i+1]
             pos = batch_data['pos'][start:end].detach().cpu().numpy()
             atomic_numbers = batch_data['atomic_numbers'][start:end].detach().cpu().numpy()
             mol, mf,factory = get_pyscf_obj_from_dataset(pos,atomic_numbers, basis=self.basis, gpu=True)
             dm0 = mf.init_guess_by_minao()
             init_h = mf.get_fock(dm=dm0)
+            # Convert CuPy array to NumPy if using gpu4pyscf
+            if hasattr(init_h, 'get'):
+                init_h = init_h.get()
             if self.trainer.hparams.remove_init:
                 f_hi = full_hami[i].detach().cpu().numpy()/HATREE_TO_KCAL+init_h
             else:
@@ -245,12 +264,12 @@ class EnergyHamiError(ErrorMetric):
         print(f"pyscf energy using NN pred:{predict}, gt is {target}")
         loss = self.get_loss_from_diff(diff,metric)
 
-        if (metric == "maemse") or (metric == "msemae"):
-            mae = torch.mean(torch.abs(diff.detach()))
-            mse = torch.mean(diff.detach()**2)
-            error_dict[f'energy_hami_loss_mae'] = mae.detach()
-            error_dict[f'energy_hami_loss_mse'] = mse.detach()
-            
+        #if (metric == "maemse") or (metric == "msemae"):
+        mae = torch.mean(torch.abs(diff.detach()))
+        mse = torch.mean(diff.detach()**2)
+        error_dict[f'energy_hami_loss_mae'] = mae.detach()
+        error_dict[f'energy_hami_loss_mse'] = mse.detach()
+
         error_dict[f'loss'] += loss.detach()
         error_dict[f'real_world_pyscf_fockenergy_{metric}'] = loss.detach()
 
@@ -275,7 +294,8 @@ class OrbitalEnergyError(ErrorMetric):
         else:
             raise NotImplementedError()
 
-        self.loss_type = trainer.hparams.enable_hami_orbital_energy
+        #self.loss_type = trainer.hparams.enable_hami_orbital_energy
+        self.loss_type = True
     
         # >>> A = torch.randn(2, 2, dtype=torch.complex128)
         # >>> A = A + A.T.conj()  # creates a Hermitian matrix
@@ -365,12 +385,7 @@ class OrbitalEnergyError(ErrorMetric):
                 # transfer init_fock to the device of full_hami
                 init_fock = torch.from_numpy(init_fock).to(full_hami_pred[i].device)
             # get the overlap matrix
-            if 's1e' in batch_data:
-                overlap_matrix = batch_data['s1e'][i] 
-                # transfer overlap_matrix to the device of full_hami
-                overlap_matrix = torch.from_numpy(overlap_matrix).to(full_hami_pred[i].device)
-            else:
-                raise ValueError("overlap matrix is not provided")
+            overlap_matrix = get_overlap_matrix(batch_data, i, start, end, atomic_numbers, full_hami_pred[i].device, basis=self.basis)
             # get the full hamiltonian by adding the initial guess
             full_hami_pred_i = full_hami_pred[i] + init_fock
             full_hami_i = full_hami[i] + init_fock
@@ -437,12 +452,7 @@ class OrbitalEnergyError(ErrorMetric):
                 # transfer init_fock to the device of full_hami
                 init_fock = torch.from_numpy(init_fock).to(full_hami_pred[i].device)
             # get the overlap matrix
-            if 's1e' in batch_data:
-                overlap_matrix = batch_data['s1e'][i] 
-                # transfer overlap_matrix to the device of full_hami
-                overlap_matrix = torch.from_numpy(overlap_matrix).to(full_hami_pred[i].device)
-            else:
-                raise ValueError("overlap matrix is not provided")
+            overlap_matrix = get_overlap_matrix(batch_data, i, start, end, atomic_numbers, full_hami_pred[i].device, basis=self.basis)
             # get the full hamiltonian by adding the initial guess
             full_hami_pred_i = full_hami_pred[i] # + init_fock
             full_hami_i = full_hami[i] # + init_fock
@@ -513,12 +523,7 @@ class OrbitalEnergyError(ErrorMetric):
                 # transfer init_fock to the device of full_hami
                 init_fock = torch.from_numpy(init_fock).to(full_hami_pred[i].device)
             # get the overlap matrix
-            if 's1e' in batch_data:
-                overlap_matrix = batch_data['s1e'][i] 
-                # transfer overlap_matrix to the device of full_hami
-                overlap_matrix = torch.from_numpy(overlap_matrix).to(full_hami_pred[i].device)
-            else:
-                raise ValueError("overlap matrix is not provided")
+            overlap_matrix = get_overlap_matrix(batch_data, i, start, end, atomic_numbers, full_hami_pred[i].device, basis=self.basis)
             # get the full hamiltonian by adding the initial guess
             full_hami_pred_i = full_hami_pred[i]  + init_fock
             full_hami_i = full_hami[i]  + init_fock
@@ -732,12 +737,7 @@ class OrbitalEnergyErrorV2(ErrorMetric):
                 # transfer init_fock to the device of full_hami
                 init_fock = torch.from_numpy(init_fock).to(full_hami_pred[i].device)
             # get the overlap matrix
-            if 's1e' in batch_data:
-                overlap_matrix = batch_data['s1e'][i] / HATREE_TO_KCAL
-                # transfer overlap_matrix to the device of full_hami
-                overlap_matrix = torch.from_numpy(overlap_matrix).to(full_hami_pred[i].device)
-            else:
-                raise ValueError("overlap matrix is not provided")
+            overlap_matrix = get_overlap_matrix(batch_data, i, start, end, atomic_numbers, full_hami_pred[i].device, basis=self.basis, scale=HATREE_TO_KCAL)
             # get the full hamiltonian by adding the initial guess
             full_hami_pred_i = full_hami_pred[i]/HATREE_TO_KCAL + init_fock/HATREE_TO_KCAL
             full_hami_i = full_hami[i]/HATREE_TO_KCAL + init_fock/HATREE_TO_KCAL
@@ -842,9 +842,8 @@ class LNNP(LightningModule):
             self.loss_func_list_val.append(ForcesError(self.hparams.forces_weight,self.hparams.forces_val_loss))
         if self.enable_hami:
             self.loss_func_list_val.append(HamiltonianError(self.hparams.hami_weight,self.hparams.hami_val_loss))
-        if self.enable_hami_orbital_energy:
-            self.loss_func_list_val.append(OrbitalEnergyError(self.hparams.orbital_energy_weight,
-                 self, self.hparams.orbital_energy_train_loss, self.hparams.basis, ed_type=self.hparams.ed_type))        
+            #self.loss_func_list_val.append(OrbitalEnergyError(self.hparams.orbital_energy_weight,
+            #     self, self.hparams.orbital_energy_train_loss, self.hparams.basis, ed_type=self.hparams.ed_type))        
         
         # some real world / application level evaluation.
         # a little time consuming, thus, in data module, only 1 batch data is used.
@@ -873,6 +872,15 @@ class LNNP(LightningModule):
             #                                                       self.hparams.energy_val_loss, 
             #                                                       self.hparams.basis, 
             #                                                       "qh9" in self.hparams.data_name.lower()))
+            # <DEBUG>
+            # add orbital energy error
+            #self.loss_func_list_test.append(OrbitalEnergyError(self.hparams.orbital_energy_weight,
+            #     self, self.hparams.orbital_energy_train_loss, self.hparams.basis, ed_type=self.hparams.ed_type))
+            # add hamiltonian error
+            self.loss_func_list_test.append(HamiltonianError(self.hparams.hami_weight,self.hparams.hami_val_loss))
+
+            # </DEBUG>
+        print(self.loss_func_list_test)
     
 
     def _reset_losses_dict(self,):
