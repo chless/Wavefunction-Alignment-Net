@@ -33,8 +33,8 @@ use_sparse_tp: true
 num_epochs: 3000000 #number of epochs
 max_steps: 100000 #Maximum number of gradient steps.
 batch_size: 2 #batch size
-inference_batch_size: null
-dataloader_num_workers: 4
+inference_batch_size: 224
+dataloader_num_workers: 0
 lr: 5e-4
 multi_para_group: false
 weight_decay: 0
@@ -55,7 +55,6 @@ hami_val_loss: 'mae'
 sparse_loss: false
 sparse_loss_coeff: 1e-5
 devices: [0]  # specify GPU device IDs, e.g., [5] for GPU 5, or [0,1] for multi-GPU. ngpus is derived from this.
-ngpus: 1
 num_nodes: 1
 precision: 32 # the precison for training, can use 16 for mixed precision
 gradient_clip_val: 1.0
