@@ -37,7 +37,7 @@ use_sparse_tp: true
 num_epochs: 30 #number of epochs
 max_steps: 150000 #Maximum number of gradient steps.
 batch_size: 1920 #batch size
-inference_batch_size: 1920
+inference_batch_size: 2000
 dataloader_num_workers: 0  # Set to 0 to debug CUDA issues
 lr: 5e-4
 multi_para_group: false
@@ -46,7 +46,7 @@ enable_hami: true
 enable_symmetry: false
 enable_energy: false
 enable_forces: false
-enable_energy_hami_error: false # when model training, 1bs validation data will calculate this error due to time cost.
+enable_energy_hami_error: true # when model training, 1bs validation data will calculate this error due to time cost.
 energy_weight: 0 #Weighting factor for energies in the loss function
 forces_weight: 0 #Weighting factor for forces in the loss function
 hami_weight: 1 #Weighting factor for hami in the loss function

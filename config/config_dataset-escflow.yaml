@@ -47,7 +47,7 @@ enable_hami: true
 enable_symmetry: false
 enable_energy: false
 enable_forces: false
-enable_energy_hami_error: false # when model training, 1bs validation data will calculate this error due to time cost.
+enable_energy_hami_error: true # when model training, 1bs validation data will calculate this error due to time cost.
 energy_weight: 0 #Weighting factor for energies in the loss function
 forces_weight: 0 #Weighting factor for forces in the loss function
 hami_weight: 1 #Weighting factor for hami in the loss function

@@ -5,10 +5,12 @@ defaults:
 - _self_
 mode: train
 
-job_id: md17_malondialdehyde
+
+job_id: qh9
 seed: 1
 # log_dir: "/mnt/data/projects/hami_accelerate/ckpt/logs"
 log_dir: "./all_checkpoints"
+resume_from_checkpoint: false  # Set to true to resume from latest checkpoint in log_dir
 debug: false
 
 wandb:
@@ -35,8 +37,8 @@ hami_model:
 use_sparse_tp: true
 num_epochs: 30 #number of epochs
 max_steps: 150000 #Maximum number of gradient steps.
-batch_size: 1920 #batch size
-inference_batch_size: 2000
+batch_size: 360 #batch size
+inference_batch_size: 540
 dataloader_num_workers: 0  # Set to 0 to debug CUDA issues
 lr: 5e-4
 multi_para_group: false
@@ -65,16 +67,16 @@ gradient_clip_val: 1.0
 early_stopping_patience: 300000
 val_check_interval: null #follow pytorch lightning
 test_interval: 10 #Test interval, one test per n epochs (default: 10) # NOT used
-save_interval: 5 #Save interval, one save per n epochs (default: 10)
+save_interval: 1 #Save interval, one save per n epochs (default: 10)
 ############
 # data realted config
 # data_name: pubchem
 # basis: "def2-tzvp"  #when predict hamitonian, the basis need to be set
 # dataset_path : "data_pool/pubchem"
-data_name: escflow_malondialdehyde
+data_name: escflow_qh9stable
 basis: "def2-svp"  #when predict hamitonian, the basis need to be set
-dataset_path : "/nas/qhflow-mlff/dataset/malondialdehyde_shard/processed/lmdbs"
-dataset_size : -1 #the dataset size is used for debug. -1 is all data")
+dataset_path : "/nas/qhflow-mlff/dataset/QH9Stable_shard/processed/lmdbs"
+dataset_size : 1000 #the dataset size is used for debug. -1 is all data")
 train_ratio: 0.8
 val_ratio: 0.1
 test_ratio: 0.1
