@@ -5,15 +5,15 @@ defaults:
 - _self_
 
 
-job_id: lsr_equiv2_sp07_sym_o4
+job_id: debug
 seed: 1
-log_dir: "./tmp/logs"
+log_dir: "./all_checkpoints"
 debug: false
 
 wandb:
   open: True
   wandb_api_key: c77ec9804aaffba9a04e3b7b4dd389b53210ab39
-  wandb_project: MADFT-NN-test
+  wandb_project: MADFT-NN
   wandb_group: ""
   wandb_notes: ""
 
@@ -54,6 +54,7 @@ forces_val_loss: 'mae'
 hami_val_loss: 'mae'
 sparse_loss: false
 sparse_loss_coeff: 1e-5
+devices: [0]  # specify GPU device IDs, e.g., [5] for GPU 5, or [0,1] for multi-GPU. ngpus is derived from this.
 ngpus: 1
 num_nodes: 1
 precision: 32 # the precison for training, can use 16 for mixed precision
@@ -65,7 +66,7 @@ save_interval: 5 #Save interval, one save per n epochs (default: 10)
 ############
 # data realted config
 data_name: pubchem
-basis: "def2-tzvp"  #when predict hamitonian, the basis need to be set
+basis: "def2-svp"  #when predict hamitonian, the basis need to be set
 dataset_path : "data_pool/pubchem"
 dataset_size : -1 #the dataset size is used for debug. -1 is all data")
 train_ratio: 0.9
@@ -81,4 +82,4 @@ unit: 1 # 627.503
 activation: "silu"
 remove_init: true # fock - init if remove_init else fock
 remove_atomref_energy: true # when true, energy = energy - eachtype_atom_count*atom_ref
-num_sanity_val_steps: 0
+num_sanity_val_steps: 2
