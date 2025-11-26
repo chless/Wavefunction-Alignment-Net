@@ -39,7 +39,7 @@ from madftnn.training.data import DataModule
 
 
 
-@hydra.main(version_base="1.3", config_path="../config", config_name="config_erpai")
+@hydra.main(version_base="1.3", config_path="../config", config_name="config")
 def cli(config: DictConfig) -> None:
     schema = OmegaConf.structured(Config)
     config = OmegaConf.merge(schema, config)
