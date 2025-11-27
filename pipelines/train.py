@@ -133,7 +133,7 @@ def main(config):
         callbacks=callbacks,
         logger=[tb_logger, wandb_logger,csv_logger], 
         val_check_interval = config.val_check_interval,
-        check_val_every_n_epoch = 25,
+        check_val_every_n_epoch = config.val_check_interval,
         precision=config.precision,
         strategy=strategy,
         gradient_clip_val = config.gradient_clip_val,
