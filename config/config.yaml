@@ -7,7 +7,7 @@ defaults:
 
 job_id: debug
 seed: 1
-log_dir: "./all_checkpoints"
+log_dir: "/data/qhflow-mlff/all_checkpoints"
 debug: false
 
 wandb:
