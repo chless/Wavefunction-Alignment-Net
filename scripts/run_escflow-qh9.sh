@@ -17,7 +17,7 @@ train_ratio=0.8 \
 val_ratio=0.1 \
 test_ratio=0.1  \
 gradient_clip_val=5.0 \
-dataset_size=100000
+dataset_size=-1
 
 
 # python pipelines/train.py --config-name=config.yaml wandb.open=True wandb.wandb_group="QH9" job_id=QHNet_SO2 wandb.wandb_api_key=6f1080f993d5d7ad6103e69ef57dd9291f1bf366 \

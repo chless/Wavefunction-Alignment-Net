@@ -1,9 +1,9 @@
 python pipelines/train.py \
 --config-name=config.yaml \
-job_id="md17-malondialdehyde" \
-data_name=escflow-malondialdehyde \
-dataset_path="/nas/qhflow-mlff/dataset/malondialdehyde_shard/processed/lmdbs" \
-devices=[3] \
+job_id="md17-uracil" \
+data_name=escflow-uracil \
+dataset_path="/nas/qhflow-mlff/dataset/uracil_shard/processed/lmdbs" \
+devices=[1,2] \
 wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \
 enable_hami=True \

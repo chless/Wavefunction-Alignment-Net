@@ -1,9 +1,9 @@
 python pipelines/train.py \
 --config-name=config.yaml \
-job_id="md17-ethanol" \
-data_name=escflow-ethanol \
-dataset_path="/nas/qhflow-mlff/dataset/ethanol_shard/processed/lmdbs" \
-devices=[2] \
+job_id="md17-malondialdehyde" \
+data_name=escflow-malondialdehyde \
+dataset_path="/nas/qhflow-mlff/dataset/malondialdehyde_shard/processed/lmdbs" \
+devices=[3,4] \
 wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \
 enable_hami=True \
