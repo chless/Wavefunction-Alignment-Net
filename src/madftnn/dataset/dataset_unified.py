@@ -372,7 +372,7 @@ class LmdbDataset(Dataset):
             fock=hamiltonian.reshape(1, h_dim, h_dim),
             init_fock=initial_hamiltonian.reshape(1, h_dim, h_dim),
             overlap=overlap_matrix.reshape(1, h_dim, h_dim),
-            orbital_energies=torch.from_numpy(orbital_energies).reshape(1, h_dim),
+            orbital_energies=torch.from_numpy(orbital_energies.copy()).reshape(1, h_dim),
             orbital_coefficients=orbital_coefficients.reshape(1, h_dim, h_dim),
             
             #energy=energy.view(1, 1),

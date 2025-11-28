@@ -21,14 +21,22 @@ def get_overlap_matrix(batch_data, i, start, end, atomic_numbers, device, basis=
     """Get overlap matrix from batch_data or compute on-the-fly using PySCF."""
     if 's1e' in batch_data:
         overlap_matrix = batch_data['s1e'][i] / scale if scale != 1.0 else batch_data['s1e'][i]
-        return torch.from_numpy(overlap_matrix).to(device)
+        overlap_tensor = torch.from_numpy(overlap_matrix).to(device)
+        # Ensure 2D shape [n_orb, n_orb]
+        if overlap_tensor.dim() == 3 and overlap_tensor.shape[0] == 1:
+            overlap_tensor = overlap_tensor.squeeze(0)
+        return overlap_tensor
     else:
         # Compute overlap matrix on-the-fly using PySCF
         pos = batch_data['pos'][start:end].detach().cpu().numpy()
         atomic_nums = atomic_numbers.detach().cpu().numpy()
         mol, mf, _ = get_pyscf_obj_from_dataset(pos, atomic_nums, basis=basis, gpu=False)
         s1e = mf.get_ovlp()
-        return torch.from_numpy(s1e).to(device)
+        s1e_tensor = torch.from_numpy(s1e).to(device)
+        # Ensure 2D shape [n_orb, n_orb]
+        if s1e_tensor.dim() == 3 and s1e_tensor.shape[0] == 1:
+            s1e_tensor = s1e_tensor.squeeze(0)
+        return s1e_tensor
 
 class FloatCastDatasetWrapper(T.BaseTransform):
     """A transform that casts all floating point tensors to a given dtype.
@@ -330,6 +338,9 @@ class OrbitalEnergyError(ErrorMetric):
             eigvals = torch.where(eigvals > eng_threshold, eigvals, eps)
             frac_overlap = eigvecs / torch.sqrt(eigvals).unsqueeze(-2)
 
+            if len(full_hamiltonian.shape) == 4:
+                full_hamiltonian = full_hamiltonian.squeeze(0)
+
             Fs = torch.bmm(torch.bmm(frac_overlap.transpose(-1, -2), full_hamiltonian), frac_overlap)
             num_orb = sum(atoms) // 2
             # orbital_energies, orbital_coefficients = torch.linalg.eigh(Fs)
@@ -544,7 +555,7 @@ class OrbitalEnergyError(ErrorMetric):
             # get the ground truth occupied orbital energies and calculate the loss
             flag1 = symeig_success and (not degenerate_eigenvalues)
             flag = flag1
-            orbital_energies_pred,diff,diff2,loss,loss2 = None,None,None,None,None,None
+            orbital_energies_pred,diff,diff2,loss,loss2 = None,None,None,None,None
             if self.loss_type == 1:
                 # orbital energy shape is 1*orb, orbital_coefficients shape is 1*orb*orb
                 # take only the occupied orbitals
