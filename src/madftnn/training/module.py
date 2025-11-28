@@ -550,7 +550,8 @@ class OrbitalEnergyError(ErrorMetric):
 
                 
             # Fs_NN = torch.bmm(torch.bmm(frac_overlap.transpose(-1, -2), full_hami_pred_i.unsqueeze(0)), frac_overlap)
-            e_NN = orbital_coefficients.permute(0,2,1)@full_hami_pred_i.unsqueeze(0)@orbital_coefficients
+            #e_NN = orbital_coefficients.permute(0,2,1)@full_hami_pred_i.unsqueeze(0)@orbital_coefficients
+            e_NN = orbital_coefficients.permute(0,2,1)@full_hami_pred_i@orbital_coefficients
 
             # get the ground truth occupied orbital energies and calculate the loss
             flag1 = symeig_success and (not degenerate_eigenvalues)
