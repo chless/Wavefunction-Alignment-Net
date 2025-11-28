@@ -96,3 +96,11 @@ def construct_o3irrps_base(dim,order):
     for l in range(order+1):
         string.append(f"{dim}x{l}e")
     return "+".join(string)
+
+def check_nan_hook(output, support_info=None):
+    if torch.isnan(output).any():
+        print(f"Output.mean(): {output.mean()}")
+        if support_info is not None:
+            print(f"Support info.mean(): {support_info.mean()}")
+    else:
+        pass
