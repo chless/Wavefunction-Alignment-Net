@@ -1,4 +1,5 @@
-python pipelines/train.py --config-name=config.yaml \
+python pipelines/train.py \
+--config-name=config.yaml \
 job_id=QH9 \
 data_name=escflow_qh9stable \
 dataset_path="/nas/qhflow-mlff/dataset/QH9Stable_shard/processed/lmdbs" \
@@ -7,7 +8,7 @@ wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \
 enable_hami=True \
 hami_weight=1 \
-devices=[4,5,6,7] \
+devices=[0,7] \
 batch_size=32 \
 inference_batch_size=224 \
 schedule=polynomial \
