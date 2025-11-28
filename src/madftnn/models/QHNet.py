@@ -169,6 +169,7 @@ class NormGate(torch.nn.Module):
         self.num_mul_wo_0 = num_mul_wo_0
 
     def forward(self, x):
+        # TODO: figure out why values are explode
         norm_x = self.norm(x)[:, self.irrep.slices()[0].stop:]
         f0 = torch.cat([x[:, self.irrep.slices()[0]], norm_x], dim=-1)
         gates = self.fc(f0)
