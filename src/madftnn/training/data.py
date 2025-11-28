@@ -10,7 +10,7 @@ from torch_scatter import scatter
 from .utils import make_splits
 
 from madftnn.dataset.dataset_unified import HamiltonianDataset_qhnet_clean,\
-LmdbDataset, get_data_default_config
+LmdbDataset, get_data_default_config, RMD17_DFT
 from madftnn.dataset.utils import shard_discretizations,InMemoryDataset
 from madftnn.dataset.utils import collate_fn_unified
 from omegaconf import MISSING, DictConfig
@@ -45,6 +45,20 @@ class DataModule(LightningDataModule):
         if stage == "fit" or stage is None or self.train_dataset is None:
             if self.data_name.lower() == "qh9":
                 dataset = HamiltonianDataset_qhnet_clean(self.path,remove_init=self.config["remove_init"])
+            elif "rmd" in self.data_name.lower():
+                dataset = RMD17_DFT(
+                    self.path,
+                    name=self.data_name,
+                    load_orbitals=self.config.get("load_orbitals", True),
+                    include_density=self.config.get("include_density", False),
+                    all_features=self.config.get("all_features", False),
+                    
+                    enable_hami = self.config["enable_hami"],
+                    old_blockbuild = False,
+                    basis = self.basis,
+                    remove_atomref_energy = self.config["remove_atomref_energy"],
+                    remove_init=self.config["remove_init"],
+                )
             else:
                 dataset = LmdbDataset(self.path,
                                       data_name=self.data_name,

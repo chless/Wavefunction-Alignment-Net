@@ -15,6 +15,16 @@ import pyscf
 from pyscf import dft
 import numpy as np
 
+# Length unit (Angstrom in pyscf)
+ANG2BOHR = 1.8897261258369282     # Angstrom to Bohr conversion
+BOHR2ANG = 0.5291772105638411     # Bohr to Angstrom conversion
+
+# Energy unit (Eh in pyscf)
+HA2eV    = 27.211396641308        # Hartree to eV conversion
+HA2meV   = HA2eV * 1000           # Hartree to meV conversion
+eV2HA    = 0.03674932247495664    # eV to Hartree
+meV2HA   = eV2HA / 1000           # meV to Hartree
+
 
 # fmt : off
 def get_total_cycles(envs):

@@ -623,3 +623,320 @@ def matrix_transform(hamiltonian, atoms, convention):
     hamiltonian_new = hamiltonian_new * transform_signs.unsqueeze(-2)
 
     return hamiltonian_new
+
+
+import os
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
+from typing import Dict
+
+import h5py
+import numpy as np
+import torch
+# file system
+torch.multiprocessing.set_sharing_strategy('file_system')
+from torch.utils.data import Dataset
+
+from madftnn.dataset.utils_escflow import ANG2BOHR, eV2HA
+from ase.data import chemical_symbols
+
+
+def _to_tensor(data) -> torch.Tensor:
+    """Utility converting numpy arrays to float64 torch tensors on CPU."""
+    if isinstance(data, torch.Tensor):
+        return data.detach().cpu().double()
+    arr = np.asarray(data)
+    dtype = torch.float64 if arr.dtype.kind == "f" else torch.int64
+    return torch.from_numpy(arr).to(dtype)
+
+
+class RMD17_DFT(Dataset):
+    """
+    In-memory loader for HDF5 MD17 data that mimics the behaviour of the existing
+    LMDB-based `MD17_DFT_Shard` dataset.
+
+    Each sample is returned as an `AOData` object with the same fields so that
+    downstream code can use the two datasets interchangeably. Loads all splits
+    (train, val, test) by default.
+
+    Parameters
+    ----------
+    root:
+        Root directory containing the dataset folder.
+    name:
+        Dataset name (e.g., "water", "aspirin").
+    prefix:
+        Prefix for the dataset folder name (default: "md-").
+    postfix:
+        Postfix for the dataset folder name (default: "").
+    load_orbitals:
+        If ``True`` also include orbital energies / coefficients.
+    include_density:
+        Attach ``density_matrix`` and ``h_core`` tensors (default ``False``).
+    all_features:
+        Mimic ``MD17_DFT_Shard(..., all_features=True)`` by also exposing
+        ``energy``/``force`` (Hartree / Hartree·Bohr⁻¹) and additional metadata.
+    """
+
+    def __init__(
+        self,
+        root: str,
+        name: str,
+        prefix: str = "",
+        postfix: str = "",
+        load_orbitals: bool = False,
+        include_density: bool = False,
+        all_features: bool = False,
+
+        enable_hami: bool = True,
+        old_blockbuild: bool = False,
+        basis: str = "def2svp",
+        remove_atomref_energy: bool = True,
+        remove_init: bool = True,
+        Htoblock_otf: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.name = name
+        assert name in ["rmd-aspirin", "rmd-ethanol", "rmd-naphthalene", "rmd-salicylic_acid"], f"Dataset name {name} not supported"
+        self.prefix = "" if prefix is None else str(prefix)
+        self.postfix = "" if postfix is None else str(postfix)
+        self.folder = root
+        self.h5_file = os.path.join(self.folder, "data.h5")
+
+        self.enable_hami = enable_hami
+        self.remove_atomref_energy = remove_atomref_energy
+        self.remove_init = remove_init
+        self.Htoblock_otf = Htoblock_otf
+        self.atom_reference, self.system_ref, _,_,_ = get_data_default_config(self.name.replace("rmd-", ""))
+
+        self.conv, self.orbitals_ref, self.mask,self.chemical_symbols = None,None,None,None
+        self.old_blockbuild = old_blockbuild
+        self.Htoblock_otf = Htoblock_otf
+        self.basis = basis
+        if self.enable_hami:
+            if (not self.old_blockbuild):
+                self.conv, _, self.mask,_ = get_conv_variable_lin(basis)
+            else:
+                self.conv, self.orbitals_ref, self.mask,self.chemical_symbols = get_conv_variable(basis)
+
+        if not os.path.exists(self.h5_file):
+            raise FileNotFoundError(f"HDF5 file not found: {self.h5_file}")
+
+        self.load_orbitals = load_orbitals
+        self.include_density = include_density or all_features
+        self.all_features = all_features
+
+        # Splits are randomly generated in the common/data_utils.py
+        with h5py.File(self.h5_file, "r") as f:
+            self.metadata = dict(f["metadata"].attrs.items())
+            splits = f["splits"]
+            train_indices = splits["train_indices"][:]
+            val_indices = splits["val_indices"][:]
+            test_indices = splits["test_indices"][:]
+            # Currently these indices are not used
+        # Combine all splits: train + val + test
+        self.indices = train_indices.tolist() + val_indices.tolist() + test_indices.tolist()
+
+        # Orbital reference information for different atomic numbers
+        self.full_orbitals = 14
+        self.orbital_mask = {}
+        self.orbitals_ref = {}
+        self.orbitals_ref[1] = np.array([0, 0, 1])  # H: 2s 1p
+        self.orbitals_ref[6] = np.array([0, 0, 0, 1, 1, 2])  # C: 3s 2p 1d
+        self.orbitals_ref[7] = np.array([0, 0, 0, 1, 1, 2])  # N: 3s 2p 1d
+        self.orbitals_ref[8] = np.array([0, 0, 0, 1, 1, 2])  # O: 3s 2p 1d
+
+        if self.name == "rmd-aspirin":
+            self.atoms = [6, 6, 6, 6, 6, 6, 6, 8, 8, 8, 6, 6, 8, 1, 1, 1, 1, 1, 1, 1, 1]
+            self.atom_list = ["C", "O", "H"]
+            self.hamiltonian_size = 222
+        elif self.name == "rmd-ethanol":
+            self.atoms = [6, 6, 8, 1, 1, 1, 1, 1, 1]
+            self.atom_list = ["C", "O", "H"]
+            self.hamiltonian_size = 72
+        elif self.name == "rmd-naphthalene":
+            self.atoms = [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1, 1]
+            self.atom_list = ["C", "H"]
+            self.hamiltonian_size = 180
+        elif self.name == "rmd-salicylic_acid":
+            self.atoms = [6, 6, 6, 8, 6, 6, 6, 6, 8, 8, 1, 1, 1, 1, 1, 1]
+            self.atom_list = ["C", "N", "O", "H"]
+            self.hamiltonian_size = 170
+        else:
+            raise NotImplementedError(f"Dataset name {self.name} not supported")
+
+        self._prepare_structure_constants()
+        self._cache: Dict[int, AOData] = {}
+
+    # ------------------------------------------------------------------ utils
+    def _prepare_structure_constants(self) -> None:
+        """Derive molecule-level helpers from the first sample."""
+        with h5py.File(self.h5_file, "r") as f:
+            sample = f[f"sample_{int(self.indices[0])}"]
+            atomic_numbers = sample["atomic_numbers"][:].astype(int)
+            self.h_dim = int(sample.attrs["nbasis"])
+
+        self.atomic_numbers = atomic_numbers.tolist()
+        self.atom_tensor = torch.tensor(self.atomic_numbers, dtype=torch.int64)
+        self.basis = self.metadata.get("basis", "def2-svp")
+        self.functional = self.metadata.get("functional", "pbe")
+        self.convention_dict = get_convention_dict()
+
+        orbitals = []
+        for Z in self.atoms:
+            orbitals.append(tuple((int(Z), int(l)) for l in self.orbitals_ref[Z]))
+        self.orbitals = tuple(orbitals)
+
+        # Pre-compute Q table (same logic as MD17_DFT_Shard.setup_Q)
+        self.atom_symbols = sorted({chemical_symbols[int(z)] for z in self.atomic_numbers})
+        onsite = Onsite_3idx_Overlap_Integral(atom_list=self.atom_symbols, basis=self.basis)
+        self.Q_dict = onsite.Q_table()
+
+        blocks = []
+        for l in range(60):
+            parts = [self.Q_dict[int(Z)][l] for Z in self.atomic_numbers]
+            blocks.append(torch.block_diag(*parts))
+        Q = torch.stack(blocks)  # [60, h_dim, h_dim]
+        Q = self._matrix_transform(Q, self.atom_tensor, "pyscf_def2svp_to_e3nn").permute(1, 2, 0)
+        if Q.shape[-1] >= 40:
+            Q[:, :, 16:40] = (
+                Q[:, :, 16:40]
+                .reshape(self.h_dim, self.h_dim, -1, 3)[:, :, :, [1, 2, 0]]
+                .reshape(self.h_dim, self.h_dim, 24)
+            )
+        self.Q = Q.double()
+
+    def _matrix_transform(self, matrices: torch.Tensor, atoms: torch.Tensor, convention: str) -> torch.Tensor:
+        return _matrix_transform_single(matrices, atoms, self.convention_dict[convention])
+
+    # ----------------------------------------------------------------- dataset
+    def __len__(self) -> int:
+        return len(self.indices)
+
+    def __getitem__(self, idx: int) -> AOData:
+        if idx >= len(self.indices):
+            raise IndexError(idx)
+        if idx in self._cache:
+            return self._cache[idx]
+
+        file_idx = int(self.indices[idx])
+        with h5py.File(self.h5_file, "r") as f:
+            sample = f[f"sample_{file_idx}"]
+            aodata = self._build_sample(sample, dataset_idx=idx, file_idx=file_idx)
+            self._cache[idx] = aodata
+            return aodata
+
+    # ----------------------------------------------------------------- helpers
+    def _build_sample(self, sample: h5py.Group, *, dataset_idx: int, file_idx: int) -> AOData:
+        pos = _to_tensor(sample["positions"][:])
+        atoms = _to_tensor(sample["atomic_numbers"][:]).view(-1, 1)
+        energy_ev = sample.attrs["energy_ev"]
+        forces_ev = _to_tensor(sample["forces_ev_ang"][:])
+        energy_ha = sample.attrs["energy_ha"]
+        forces_ha_bohr = _to_tensor(sample["forces_ha_bohr"][:])
+        energy_ref_ev = sample.attrs["energy_ref_ev"]
+        forces_ref_ev = _to_tensor(sample["forces_ref_ev"][:]) # eV/Angstrom
+
+        energy = torch.tensor([[energy_ev]], dtype=torch.float64)
+        forces = forces_ev
+
+        overlap = _to_tensor(sample["overlap"][:]).reshape(self.h_dim, self.h_dim)
+        hamiltonian = _to_tensor(sample["hamiltonian"][:]).reshape(self.h_dim, self.h_dim)
+        init_ham = _to_tensor(sample["initial_hamiltonian"][:]).reshape(self.h_dim, self.h_dim)
+
+        overlap = self._matrix_transform(overlap, atoms, "pyscf_def2svp_to_e3nn")
+        hamiltonian = self._matrix_transform(hamiltonian, atoms, "pyscf_def2svp_to_e3nn")
+        init_ham = self._matrix_transform(init_ham, atoms, "pyscf_def2svp_to_e3nn")
+
+        mol_spec = build_molecule(self.atomic_numbers, pos.detach().cpu().numpy())
+        #AO_index = build_AO_index(mol_spec, self.basis)
+        #AO_l_index = construct_orbital_l_index(AO_index[1])
+        #AO_l_index_len = torch.tensor([[AO_l_index.numel()]], dtype=torch.int64)
+
+        connections = [[i, j] for i in range(pos.shape[0]) for j in range(pos.shape[0]) if i != j]
+        full_edge_index = (
+            torch.tensor(connections, dtype=torch.int64).t().contiguous()
+            if connections
+            else torch.zeros((2, 0), dtype=torch.int64)
+        )
+
+        data_object = AOData(
+            pos=pos,
+            atomic_numbers=atoms,
+            energy=energy,
+            forces=forces,
+            #energy_ref=energy_ref_ev,
+            #forces_ref=forces_ref_ev,
+            fock=hamiltonian.view(1, self.h_dim, self.h_dim),
+            overlap=overlap.view(1, self.h_dim, self.h_dim),
+            init_fock=init_ham.view(1, self.h_dim, self.h_dim),
+            #AO_index=AO_index,
+            #AO_l_index=AO_l_index,
+            #AO_l_index_len=AO_l_index_len,
+            #num_atoms=torch.tensor([[pos.shape[0]]], dtype=torch.int64),
+            #Q=self.Q,
+            #h_dim=torch.tensor([[self.h_dim]], dtype=torch.int64),
+            #full_edge_index=full_edge_index,
+        )
+
+
+        if self.load_orbitals:
+            data_object.orbital_energies = _to_tensor(sample["orbital_energies"][:]).view(1, -1)
+            data_object.orbital_coefficients = _to_tensor(sample["orbital_coefficients"][:])
+
+        out = {'pos': data_object.pos.numpy().astype(np.float32), 
+            'forces': data_object.forces.numpy().astype(np.float32),
+            # 'edge_index': data_object.edge_index.numpy(), 
+            # 'labels': data_object.labels.numpy(),
+            'atomic_numbers': data_object.atomic_numbers.numpy(),
+            'molecule_size':data_object.pos.shape[0],
+            "idx":dataset_idx
+            }
+        if isinstance(data_object.energy, torch.Tensor):
+            energy = data_object.energy.detach().cpu().numpy()
+        else:
+            energy = data_object.energy
+        out["pyscf_energy"] = copy.deepcopy(energy.astype(np.float32))  # this is pyscf energy ground truth
+        if self.remove_atomref_energy:
+            unique,counts = np.unique(out["atomic_numbers"],return_counts=True)
+            energy = energy - np.sum(self.atom_reference[unique]*counts)
+            energy = energy - self.system_ref
+            
+        out["energy"] = energy.astype(np.float32) # this is used from model training, mean/ref is removed.
+
+        if self.enable_hami:
+            if self.remove_init:
+                data_object.fock = data_object.fock - data_object.init_fock
+            if self.Htoblock_otf == True:
+                out.update({"buildblock_mask":self.mask,
+                            "max_block_size":self.conv.max_block_size,
+                            "fock":data_object.fock.numpy().astype(np.float32)
+                            })
+            else:
+                diag,non_diag,diag_mask,non_diag_mask = None,None,None,None
+                if (not self.old_blockbuild):
+                    diag,non_diag,diag_mask,non_diag_mask = matrixtoblock_lin(data_object.fock.numpy().astype(np.float32),
+                                                                            data_object.atomic_numbers.numpy(),
+                                                                            self.mask,self.conv.max_block_size)
+                else:
+                    H = data_object.fock
+                    initH = data_object.init_fock
+                    Z = data_object.atomic_numbers
+
+                    diag, non_diag, diag_init, non_diag_init, diag_mask, non_diag_mask = split2blocks(
+                        matrix_transform(H,Z,self.conv).numpy(),
+                        matrix_transform(initH,Z,self.conv).numpy(),
+                        Z.numpy(), self.orbitals_ref, self.mask, self.conv.max_block_size)
+                out.update({'diag_hamiltonian': diag,
+                        'non_diag_hamiltonian': non_diag,
+                        'diag_mask': diag_mask,
+                        'non_diag_mask': non_diag_mask})
+            out.update({"init_fock":data_object.init_fock.numpy().astype(np.float32)})
+            out.update({"s1e":data_object.overlap.numpy().astype(np.float32)})
+            if hasattr(data_object, 'orbital_energies'):
+                out.update({"orbital_energy":data_object.orbital_energies.numpy().astype(np.float32)})
+            if hasattr(data_object, 'orbital_coefficients'):
+                out.update({"orbital_coeff":data_object.orbital_coefficients.numpy().astype(np.float32)})
+
+        return out
