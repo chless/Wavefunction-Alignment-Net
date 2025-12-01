@@ -14,7 +14,9 @@ import json
 # Suppress FutureWarning about torch.load
 warnings.filterwarnings('ignore', category=FutureWarning)
 
-def process_single_molecule(pred_file_path, gt_file_path):
+def process_single_molecule(pred_file_path, gt_file_path,
+    unit="ang", xc="pbe0", basis="def2svp"
+):
     dir_path = os.path.dirname(pred_file_path)
     calc_path = pred_file_path.replace("pred_", "calc_")
 
@@ -26,8 +28,9 @@ def process_single_molecule(pred_file_path, gt_file_path):
     atoms = gt_data["atoms"]
     pos = gt_data["pos"] * BOHR2ANG
 
-    calc_mf = init_pyscf_mf(atoms, pos, unit="ang")
+    calc_mf = init_pyscf_mf(atoms, pos, unit=unit, xc=xc, basis=basis)
     grad_frame = calc_mf.nuc_grad_method()
+    NEW_CALC = False
     try:
         # Check if calculated data exists
         if os.path.exists(calc_path):
@@ -48,8 +51,8 @@ def process_single_molecule(pred_file_path, gt_file_path):
             calc_data["overlap"] = torch.tensor(calc_mf.get_ovlp(), dtype=torch.float64)
             calc_data["density_matrix"] = torch.tensor(calc_mf.make_rdm1(), dtype=torch.float64)
             calc_data["method"] = "RKS"
-            calc_data["xc"] = "pbe"
-            calc_data["basis"] = "def2svp"
+            calc_data["xc"] = xc
+            calc_data["basis"] = basis
             calc_data["scf_cycles"] = calc_mf.cycles
             calc_data["forces"] = torch.tensor(-grad_frame.kernel(), dtype=torch.float64)
 
@@ -73,7 +76,9 @@ def process_single_molecule(pred_file_path, gt_file_path):
             # save calc_data
             torch.save(calc_data, calc_path)
 
-        if "calc_force" in pred_data:
+            NEW_CALC = True
+
+        if "calc_force" in pred_data and not NEW_CALC:
             pred_energy = pred_data["calc_energy"]
             pred_forces = pred_data["calc_forces"]
             pred_mo_energy = pred_data["calc_mo_energy"]
@@ -98,7 +103,7 @@ def process_single_molecule(pred_file_path, gt_file_path):
 
             # save pred_data
             torch.save(pred_data, pred_file_path)
-        if "calc_force" in gt_data:
+        if "calc_force" in gt_data and not NEW_CALC:
             gt_energy = gt_data["calc_energy"]
             gt_forces = gt_data["calc_forces"]
             gt_mo_energy = gt_data["calc_mo_energy"]
@@ -212,7 +217,7 @@ if __name__ == "__main__":
     # Create list of (pred_path, gt_path) tuples
     file_pairs = list(zip(list_pred_paths, list_gt_paths))
     if args.debug:
-        file_pairs = file_pairs[:10]
+        file_pairs = file_pairs[:20]
 
     print(f"Processing {len(file_pairs)} molecules with {num_procs} processes...")
 
