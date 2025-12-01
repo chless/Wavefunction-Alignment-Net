@@ -1,0 +1,22 @@
+python pipelines/train.py \
+--config-name=config.yaml \
+mode=test \
+save_output_dump=true \
+inference_batch_size=216 \
+job_id="md17-naphthalene" \
+data_name=rmd-naphthalene \
+dataset_path="/data/qhflow-mlff/dataset/md-naphthalene" \
+devices=[3] \
+wandb.wandb_api_key=$WANDB_API_KEY \
+lr=0.0005 \
+enable_hami=True \
+hami_weight=1  \
+batch_size=32 \
+schedule=polynomial \
+schedule.lr_warmup_steps=1000 \
+max_steps=100000 \
+train_ratio=0.8 \
+val_ratio=0.1 \
+test_ratio=0.1 \
+gradient_clip_val=5.0 \
+dataset_size=-1
