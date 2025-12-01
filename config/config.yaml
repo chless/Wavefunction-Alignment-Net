@@ -17,6 +17,8 @@ wandb:
   wandb_group: ""
   wandb_notes: ""
 
+save_predicted_output: false
+
 #########
 # trainer related config
 model_backbone: Equiformerv2SO2
