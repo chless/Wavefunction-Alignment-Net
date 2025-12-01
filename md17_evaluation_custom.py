@@ -212,12 +212,13 @@ if __name__ == "__main__":
     # Create list of (pred_path, gt_path) tuples
     file_pairs = list(zip(list_pred_paths, list_gt_paths))
     if args.debug:
-        file_pairs = file_pairs[:20]
+        file_pairs = file_pairs[:10]
 
     print(f"Processing {len(file_pairs)} molecules with {num_procs} processes...")
 
     if  num_procs == 1:
-        results = [process_single_molecule(pred_path, gt_path) for pred_path, gt_path in file_pairs]
+        iter_bar = tqdm(file_pairs, desc="Processing molecules")
+        results = [process_single_molecule(pred_path, gt_path) for pred_path, gt_path in iter_bar]
     else:
         # Process with multiprocessing
         with Pool(processes=num_procs) as pool:
