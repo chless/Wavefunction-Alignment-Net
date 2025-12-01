@@ -96,7 +96,7 @@ class DataModule(LightningDataModule):
                 # join(self.log_dir, "splits.npz"),
             )
             print(
-                f"train {len(self.idx_train)}, val {len(self.idx_val)}, test {len(self.idx_test)}"
+                f"per rank train {len(self.idx_train)}, val {len(self.idx_val)}, test {len(self.idx_test)}"
             )
 
             self.train_dataset = Subset(self.dataset, self.idx_train)

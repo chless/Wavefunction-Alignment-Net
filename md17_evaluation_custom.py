@@ -1,0 +1,138 @@
+import os
+import glob
+import torch
+from pyscf import gto, scf, dft
+import time
+from escflow_eval_utils import init_pyscf_mf, calc_dm0_from_ham, matrix_transform_single
+from escflow_eval_utils import BOHR2ANG
+import numpy as np
+
+dir_path = '/data/qhflow-mlff/all_checkpoints/md17-salicylic_acid/output_dump'
+pred_prefix = 'pred_'
+list_pred_paths = glob.glob(os.path.join(dir_path, f"{pred_prefix}*.pt"))
+# sort by file name
+list_pred_paths.sort()
+
+gt_prefix = 'gt_'
+list_gt_paths = glob.glob(os.path.join(dir_path, f"{gt_prefix}*.pt"))
+# sort by file name
+list_gt_paths.sort()
+
+a = 0
+
+pred_file_path = list_pred_paths[a]
+gt_file_path = list_gt_paths[a]
+
+pred_data = torch.load(pred_file_path)
+gt_data = torch.load(gt_file_path)
+
+atoms = gt_data["atoms"]
+pos = gt_data["pos"] * BOHR2ANG
+
+calc_mf = init_pyscf_mf(atoms, pos, unit="ang")
+grad_frame = calc_mf.nuc_grad_method()
+# Check if calculated data exists
+
+calc_data = gt_data.copy()  # Use copy to avoid modifying original
+start_time = time.time()
+calc_mf.kernel()
+calc_data["calc_time"] = time.time() - start_time
+calc_data["hamiltonian"] = torch.tensor(calc_mf.get_fock(dm=calc_mf.make_rdm1()), dtype=torch.float64)
+calc_data["overlap"] = torch.tensor(calc_mf.get_ovlp(), dtype=torch.float64)
+calc_data["density_matrix"] = torch.tensor(calc_mf.make_rdm1(), dtype=torch.float64)
+calc_data["method"] = "RKS"
+calc_data["xc"] = "pbe"
+calc_data["basis"] = "def2svp"
+calc_data["scf_cycles"] = calc_mf.cycles
+calc_data["forces"] = torch.tensor(-grad_frame.kernel(), dtype=torch.float64)
+
+if "calc_forces" in calc_data:
+    calc_energy = calc_data["calc_energy"]
+    calc_forces = calc_data["calc_forces"]
+else:
+    calc_overlap = calc_data["overlap"].unsqueeze(0) # (gt_overlap - calc_overlap) has float32 precision error (1e^-7)
+    calc_ham = calc_data["hamiltonian"].unsqueeze(0)
+    
+    calc_density, calc_res = calc_dm0_from_ham(atoms, calc_overlap, calc_ham, transform=False)
+    calc_energy = calc_mf.energy_tot(calc_density)
+    calc_data["calc_energy"] = calc_energy
+
+    calc_mo_energy = calc_res["orbital_energies"].squeeze().numpy()
+    calc_mo_coeff = calc_res["orbital_coefficients"].squeeze().numpy()
+
+    mo_occ = calc_mf.get_occ(calc_mo_energy, calc_mo_coeff)
+    calc_forces = -grad_frame.kernel(mo_energy=calc_mo_energy, mo_coeff=calc_mo_coeff, mo_occ=mo_occ)
+    calc_data["calc_forces"] = calc_forces
+
+if "calc_forces" in pred_data:
+    pred_energy = pred_data["calc_energy"]
+    pred_forces = pred_data["calc_forces"]
+else:
+    calc_overlap = calc_data["overlap"].unsqueeze(0) # (gt_overlap - calc_overlap) has float32 precision error (1e^-7)
+    pred_ham = matrix_transform_single(pred_data["pred_hamiltonian"].unsqueeze(0), atoms, convention="back2pyscf")
+    
+    pred_density, pred_res = calc_dm0_from_ham(atoms, calc_overlap, pred_ham, transform=False)
+    pred_energy = calc_mf.energy_tot(pred_density)
+    pred_data["calc_energy"] = pred_energy
+    
+    pred_mo_energy = pred_res["orbital_energies"].squeeze().numpy()
+    pred_mo_coeff = pred_res["orbital_coefficients"].squeeze().numpy()
+    
+    mo_occ = calc_mf.get_occ(pred_mo_energy, pred_mo_coeff)
+    pred_forces = -grad_frame.kernel(mo_energy=pred_mo_energy, mo_coeff=-pred_mo_coeff, mo_occ=mo_occ)
+    pred_data["calc_forces"] = pred_forces
+
+if "calc_forces" in gt_data:
+    gt_energy = gt_data["calc_energy"]
+    gt_forces = gt_data["calc_forces"]
+    if not os.path.exists(gt_path_processed):
+        torch.save(gt_data, gt_path_processed)
+else:
+    calc_overlap = calc_data["overlap"].unsqueeze(0) # (gt_overlap - calc_overlap) has float32 precision error (1e^-7)
+    gt_ham = matrix_transform_single(gt_data["hamiltonian"].unsqueeze(0), atoms, convention="back2pyscf")
+    
+    gt_density, gt_res = calc_dm0_from_ham(atoms, calc_overlap, gt_ham, transform=False)
+    gt_energy = calc_mf.energy_tot(gt_density)
+    gt_data["calc_energy"] = gt_energy
+
+    gt_mo_energy = gt_res["orbital_energies"].squeeze().numpy()
+    gt_mo_coeff = gt_res["orbital_coefficients"].squeeze().numpy()
+
+    mo_occ = calc_mf.get_occ(gt_mo_energy, gt_mo_coeff)
+    gt_forces = -grad_frame.kernel(mo_energy=gt_mo_energy, mo_coeff=-gt_mo_coeff, mo_occ=mo_occ)
+    gt_data["calc_forces"] = gt_forces
+    
+pred_forces_norm = np.linalg.norm(pred_forces, axis=1)
+calc_forces_norm = np.linalg.norm(calc_forces, axis=1)
+gt_forces_norm = np.linalg.norm(gt_forces, axis=1)
+
+result = {
+    "pred_index": data_index,
+    "pred_path": pred_path,
+    "pred_energy": pred_energy,
+    "gt_energy": gt_energy,
+    "calc_energy": calc_energy,
+    
+    "energy_diff (pred-gt)": pred_energy - gt_energy,
+    "energy_diff (pred-calc_energy)": pred_energy - calc_energy,
+    "energy_diff (gt-calc_energy)": gt_energy - calc_energy,
+
+    "pred_force": pred_forces,
+    "gt_force": gt_forces,
+    "calc_force": calc_forces,
+
+    "forces_diff l2 (pred-gt)": abs(pred_forces - gt_forces).mean(),
+    "forces_diff l2 (pred-calc_forces)": abs(pred_forces - calc_forces).mean(),
+    "forces_diff l2 (gt-calc_forces)": abs(gt_forces - calc_forces).mean(),
+
+    "pred_force_norm": pred_forces_norm,
+    "gt_force_norm": gt_forces_norm,
+    "calc_force_norm": calc_forces_norm,
+
+    "pred_force_norm_diff (pred-gt)": abs(pred_forces_norm - gt_forces_norm).mean(),
+    "pred_force_norm_diff (pred-calc_forces)": abs(pred_forces_norm - calc_forces_norm).mean(),
+    "gt_force_norm_diff (gt-calc_forces)": abs(gt_forces_norm - calc_forces_norm).mean(),
+}
+
+
+print(result)

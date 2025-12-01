@@ -491,7 +491,7 @@ class LmdbDataset(Dataset):
             if hasattr(data_object, 'orbital_energies'):
                 out.update({"orbital_energy":data_object.orbital_energies.numpy().astype(np.float32)})
             if hasattr(data_object, 'orbital_coefficients'):
-                out.update({"orbital_coeff":data_object.orbital_coefficients.numpy().astype(np.float32)})
+                out.update({"orbital_coefficients":data_object.orbital_coefficients.numpy().astype(np.float32)})
 
         return out
     
@@ -937,6 +937,6 @@ class RMD17_DFT(Dataset):
             if hasattr(data_object, 'orbital_energies'):
                 out.update({"orbital_energy":data_object.orbital_energies.numpy().astype(np.float32)})
             if hasattr(data_object, 'orbital_coefficients'):
-                out.update({"orbital_coeff":data_object.orbital_coefficients.numpy().astype(np.float32)})
+                out.update({"orbital_coefficients":data_object.orbital_coefficients.numpy().astype(np.float32)})
 
         return out

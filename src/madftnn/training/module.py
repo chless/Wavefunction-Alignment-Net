@@ -1101,15 +1101,16 @@ class LNNP(LightningModule):
             start = batch.ptr[mol_idx]
             end = batch.ptr[mol_idx + 1]
 
-            pos = batch.pos[start:end]
-            atoms = batch.atomic_numbers[start:end]
-
+            pos = batch.pos[start:end].cpu()
+            atoms = batch.atomic_numbers[start:end].cpu()
+            global_idx = batch.idx[mol_idx].item()
             config = {
                 "overlap": gt_overlap[mol_idx],
                 "pos": pos,
                 "atoms": atoms,
                 "format": format,
                 "length_unit":length_unit,
+                "idx": global_idx
             }
 
             pred = {
@@ -1117,7 +1118,8 @@ class LNNP(LightningModule):
                 **config,
             }
 
-            file_index = f"rank{rank}_batch{batch_idx}_mol{mol_idx}"
+            #file_index = f"rank{rank}_batch{batch_idx}_mol{mol_idx}"
+            file_index = f"mol{global_idx}"
             torch.save(pred, os.path.join(log_dir, f"pred_{file_index}.pt"))
             
             gt_init_ham = gt_init_hamiltonian[mol_idx]
@@ -1126,7 +1128,7 @@ class LNNP(LightningModule):
 
             gt = {
                 "hamiltonian": gt_hamiltonian[mol_idx].cpu(),
-                "init_ham": gt_init_ham,
+                "init_ham": gt_init_ham.cpu(),
                 "energy": gt_dft_energy[mol_idx].cpu(),
                 "force": gt_dft_force[mol_idx].cpu(),
                 **config,
