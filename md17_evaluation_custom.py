@@ -29,6 +29,7 @@ pred_data = torch.load(pred_file_path)
 gt_data = torch.load(gt_file_path)
 
 atoms = gt_data["atoms"]
+data_index = gt_data["idx"]
 pos = gt_data["pos"] * BOHR2ANG
 
 calc_mf = init_pyscf_mf(atoms, pos, unit="ang")
@@ -115,10 +116,17 @@ pred_forces_norm = np.linalg.norm(pred_forces, axis=1)
 calc_forces_norm = np.linalg.norm(calc_forces, axis=1)
 gt_forces_norm = np.linalg.norm(gt_forces, axis=1)
 
+num_occ = int(gt_data["atoms"].sum() / 2)
+
+# Extract occupied orbital energies only
+pred_mo_energy_occ = pred_mo_energy[:num_occ]
+gt_mo_energy_occ = gt_mo_energy[:num_occ]
+calc_mo_energy_occ = calc_mo_energy[:num_occ]
+
 
 result = {
-    "pred_index": data_index,
-    "pred_path": pred_path,
+    "data_index": data_index,
+
     "pred_energy": pred_energy,
     "gt_energy": gt_energy,
     "calc_energy": calc_energy,
@@ -146,6 +154,10 @@ result = {
     "orbital_coeff_similarity (pred-gt)": torch.cosine_similarity(torch.tensor(pred_mo_coeff), torch.tensor(gt_mo_coeff), dim=1).abs().mean(),
     "orbital_coeff_similarity (pred-calc)": torch.cosine_similarity(torch.tensor(pred_mo_coeff), torch.tensor(calc_mo_coeff), dim=1).abs().mean(),
     "orbital_coeff_similarity (gt-calc)": torch.cosine_similarity(torch.tensor(gt_mo_coeff), torch.tensor(calc_mo_coeff), dim=1).abs().mean(),
+
+    "occupied_orbital_energy_mae (pred-gt)": np.abs(pred_mo_energy_occ - gt_mo_energy_occ).mean(),
+    "occupied_orbital_energy_mae (pred-calc)": np.abs(pred_mo_energy_occ - calc_mo_energy_occ).mean(),
+    "occupied_orbital_energy_mae (gt-calc)": np.abs(gt_mo_energy_occ - calc_mo_energy_occ).mean(),
 }
 
 
