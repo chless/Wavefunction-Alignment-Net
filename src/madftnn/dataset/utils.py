@@ -135,8 +135,6 @@ def collate_fn_unified(long_cutoff_upper = 9, unit = 1):
         processed = Data()
         bs_mol = len(list_of_data)
         for key in list_of_data[0].keys():
-            if key == 'forces':
-                continue
             if key in ['pos',"atomic_numbers"]:
                 processed[key] = torch.cat([torch.from_numpy(list_of_data[i][key]) for i in range(bs_mol)],dim = 0)
             elif key in ['diag_hamiltonian','non_diag_hamiltonian']:
