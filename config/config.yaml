@@ -10,6 +10,9 @@ seed: 1
 log_dir: "/data/qhflow-mlff/all_checkpoints"
 debug: false
 
+mode: test
+save_output_dump: false
+
 wandb:
   open: True
   wandb_api_key: c77ec9804aaffba9a04e3b7b4dd389b53210ab39

@@ -357,6 +357,27 @@ class HamiHeadSymmetry(nn.Module):
             
         return rebuildfocks
 
+    def build_final_matrix_general(self,
+            batch,
+            full_diag,
+            full_non_diag,
+            sym = False,
+        ):
+        atom_start = 0
+        atom_pair_start = 0
+        full_matrix = []
+        for idx,n_atom in enumerate(batch.molecule_size.reshape(-1)):
+            n_atom = n_atom.item()
+            Z = batch.atomic_numbers[atom_start:atom_start+n_atom]
+            diag = full_diag[atom_start:atom_start+n_atom]
+            non_diag = full_non_diag[atom_pair_start:atom_pair_start+n_atom*(n_atom-1)//2]
+            matrix = block2matrix(Z,diag,non_diag,self.mask_lin,self.conv.max_block_size,sym = True)
+
+            atom_start += n_atom
+            atom_pair_start += n_atom*(n_atom-1)//2
+            full_matrix.append(matrix)
+        return torch.stack(full_matrix, dim=0)
+
         
     def forward(self, data):
         if 'fii' not in data.keys or "fij" not in data.keys:

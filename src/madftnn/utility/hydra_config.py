@@ -38,6 +38,7 @@ class Config(BaseSchema):
     job_id: str = "auto"
     log_dir: str = "./tmp"
     mode: str = "train"  # "train" or "test"
+    save_output_dump: bool = False  # Whether to save predictions during testing
     resume_from_checkpoint: bool = True  # Whether to resume from latest checkpoint
     schedule: Dict[str, Any] = MISSING
     model: Dict[str, Any] = MISSING
