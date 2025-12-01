@@ -36,6 +36,9 @@ def process_single_molecule(pred_file_path, gt_file_path):
             calc_forces = calc_data["calc_forces"]
             calc_mo_energy = calc_data["calc_mo_energy"]
             calc_mo_coeff = calc_data["calc_mo_coeff"]
+            calc_ham = calc_data["hamiltonian"]
+            calc_overlap = calc_data["overlap"]
+            
         else:
             calc_data = gt_data.copy()  # Use copy to avoid modifying original
             start_time = time.time()
@@ -136,6 +139,10 @@ def process_single_molecule(pred_file_path, gt_file_path):
         result = {
             "data_index": data_index,
 
+            "hamiltonian_diff (pred-gt)": abs(pred_ham - gt_ham).mean(),
+            "hamiltonian_diff (pred-calc)": abs(pred_ham - calc_ham).mean(),
+            "hamiltonian_diff (gt-calc)": abs(gt_ham - calc_ham).mean(),
+
             "pred_energy": pred_energy,
             "gt_energy": gt_energy,
             "calc_energy": calc_energy,
@@ -185,6 +192,7 @@ if __name__ == "__main__":
     parser.add_argument("--pred_prefix", type=str, default="pred_")
     parser.add_argument("--gt_prefix", type=str, default="gt_")
     parser.add_argument("--num_procs", type=int, default=1)
+    parser.add_argument("--debug", default=False, action="store_true")
     args = parser.parse_args()
 
     dir_path = args.dir_path
@@ -203,6 +211,8 @@ if __name__ == "__main__":
 
     # Create list of (pred_path, gt_path) tuples
     file_pairs = list(zip(list_pred_paths, list_gt_paths))
+    if args.debug:
+        file_pairs = file_pairs[:20]
 
     print(f"Processing {len(file_pairs)} molecules with {num_procs} processes...")
 
