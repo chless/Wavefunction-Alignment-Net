@@ -49,6 +49,7 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 log = logging.getLogger(__name__)
 
 import glob
+import re
 
 
 class CSVLogger(Logger, FabricCSVLogger):
@@ -150,12 +151,19 @@ class CSVLogger(Logger, FabricCSVLogger):
 
 
 def get_latest_ckpt(log_dir):
-    ckpt_files = glob.glob(os.path.join(log_dir, '*.ckpt'))  
-    if ckpt_files:
-        latest_file = max(ckpt_files, key=os.path.getctime)  
-    else:  
-        latest_file = None
-    return latest_file
+    ckpt_files = glob.glob(os.path.join(log_dir, '*.ckpt'))
+    step_pattern = r"step=(\d+)"
+    latest_step = -1
+
+    for ckpt_file in ckpt_files:
+        match = re.search(step_pattern, ckpt_file)
+        if match:
+            step = int(match.group(1))
+            if step > latest_step:
+                latest_step = step
+                latest_ckpt = ckpt_file
+
+    return latest_ckpt
 
 class _ExperimentWriter:
     r"""Experiment writer for CSVLogger.
