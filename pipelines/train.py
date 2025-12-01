@@ -167,6 +167,8 @@ def main(config):
         latest_file = get_latest_ckpt(config.log_dir)
         print(latest_file,config.log_dir)
         trainer.test(model, data,ckpt_path=latest_file)
+    elif config.mode == "predict":
+        raise ValueError("Predict mode is not supported yet")
     else:
         raise ValueError("Mode not supported")
 

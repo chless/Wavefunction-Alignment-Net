@@ -164,6 +164,30 @@ class HamiltonianError(ErrorMetric):
         error_dict[f'hami_loss_{metric}'] = loss.detach()
         # print(f"==============hami_loss_{metric}, {loss.detach()}")
 
+def build_final_matrix(batch_data, basis, sym=True):
+    atom_start = 0
+    atom_pair_start = 0
+    rebuildfocks = []
+    conv,_,mask_lin,_ = get_conv_variable_lin(basis)
+    for idx,n_atom in enumerate(batch_data.molecule_size.reshape(-1)):
+        n_atom = n_atom.item()
+        Z = batch_data.atomic_numbers[atom_start:atom_start+n_atom]
+        diag = batch_data.diag_hamiltonian[atom_start:atom_start+n_atom]
+        if sym:
+            non_diag = batch_data.non_diag_hamiltonian[atom_pair_start:atom_pair_start+n_atom*(n_atom-1)//2]
+        else:
+            non_diag = batch_data.non_diag_hamiltonian[atom_pair_start:atom_pair_start+n_atom*(n_atom-1)]
+        # diag = batch_data["diag_hamiltonian"][atom_start:atom_start+n_atom]
+        # non_diag = batch_data["non_diag_hamiltonian"][atom_pair_start:atom_pair_start+n_atom*(n_atom-1)//2]
+
+        atom_start += n_atom
+        atom_pair_start += n_atom*(n_atom-1)//2
+        
+        rebuildfock = block2matrix(Z,diag,non_diag,mask_lin,conv.max_block_size, sym=sym)
+        rebuildfocks.append(rebuildfock)
+    # batch_data["pred_hamiltonian"] = rebuildfocks
+    return rebuildfocks
+
 class EnergyHamiError(ErrorMetric):
     def __init__(self, loss_weight, trainer = None,metric="mae", 
                     basis="def2-svp", transform_h=False, scaled=False, normalization=False):
@@ -992,11 +1016,11 @@ class LNNP(LightningModule):
         # # test step
         # return self.step(batch, l1_loss, "test")
 
-    def test_step(self, batch_data, batch_idx, mode="test"):
-        return self.step(batch_data, "test", self.loss_func_list_test, mode=mode)
+    def test_step(self, batch_data, batch_idx):
+        return self.step(batch_data, "test", self.loss_func_list_test)
 
 
-    def step(self, batch_data, stage, loss_func_list=[], mode="test"):
+    def step(self, batch_data, stage, loss_func_list=[]):
         batch_data = self.data_transform(batch_data)
         with torch.set_grad_enabled(stage == "train" or self.enable_forces):
             # TODO: the model doesn't necessarily need to return a derivative once
@@ -1027,28 +1051,7 @@ class LNNP(LightningModule):
             self.log_dict(train_metrics, sync_dist=True)
             # if  train_metrics['step']%10 == 0:
             # print(train_metrics)
-
-        if self.hparams.save_predicted_output and self.hparams.mode == "test":
-            self.save_predicted_output(batch_data)
         return error_dict["loss"]
-
-    def save_predicted_out_dict(self, batch_data):
-        build_final_matrix_general = self.trainer.model.model.hami_model.build_final_matrix_general 
-        
-        pred_hamiltonian = build_final_matrix_general(
-            batch_data=batch_data,
-            diag_matrix=batch_data['diag_hamiltonian'],
-            non_diag_matrix=batch_data['non_diag_hamiltonian']
-        )
-        gt_hamiltonian = build_final_matrix_general(
-            batch_data=batch_data,
-            diag_matrix=batch_data['diag_hamiltonian'],
-            non_diag_matrix=batch_data['non_diag_hamiltonian']
-        )
-        pyscf_energy = batch_data['pyscf_energy']
-        orbital_energy = batch_data['orbital_energy']
-        orbital_coeff = batch_data['orbital_coeff']
-
 
 
 
