@@ -1,9 +1,9 @@
 python pipelines/train.py \
 --config-name=config.yaml \
-job_id="md17-uracil" \
-data_name=escflow-uracil \
-dataset_path="/data/qhflow-mlff/dataset/uracil_shard/processed/lmdbs" \
-devices=[1,2] \
+job_id="md17-salicylic_acid" \
+data_name=rmd-salicylic_acid \
+dataset_path="/data/qhflow-mlff/dataset/md-salicylic_acid" \
+devices=[0,7] \
 wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \
 enable_hami=True \

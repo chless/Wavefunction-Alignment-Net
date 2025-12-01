@@ -2,7 +2,7 @@ python pipelines/train.py \
 --config-name=config.yaml \
 job_id=QH9 \
 data_name=escflow_qh9stable \
-dataset_path="/nas/qhflow-mlff/dataset/QH9Stable_shard/processed/lmdbs" \
+dataset_path="/data/qhflow-mlff/dataset/QH9Stable_shard/processed/lmdbs" \
 model_backbone=QHNet_backbone \
 wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \

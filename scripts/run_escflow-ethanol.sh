@@ -2,7 +2,7 @@ python pipelines/train.py \
 --config-name=config.yaml \
 job_id="md17-ethanol" \
 data_name=escflow-ethanol \
-dataset_path="/nas/qhflow-mlff/dataset/ethanol_shard/processed/lmdbs" \
+dataset_path="/data/qhflow-mlff/dataset/ethanol_shard/processed/lmdbs" \
 devices=[5,6] \
 wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \

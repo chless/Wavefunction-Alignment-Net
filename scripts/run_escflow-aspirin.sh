@@ -1,9 +1,9 @@
 python pipelines/train.py \
 --config-name=config.yaml \
-job_id="md17-uracil" \
-data_name=escflow-uracil \
-dataset_path="/data/qhflow-mlff/dataset/uracil_shard/processed/lmdbs" \
-devices=[1,2] \
+job_id="md17-aspirin" \
+data_name=rmd-aspirin \
+dataset_path="/data/qhflow-mlff/dataset/md-aspirin" \
+devices=[3,4] \
 wandb.wandb_api_key=$WANDB_API_KEY \
 lr=0.0005 \
 enable_hami=True \
