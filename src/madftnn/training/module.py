@@ -1110,7 +1110,8 @@ class LNNP(LightningModule):
                 "atoms": atoms,
                 "format": format,
                 "length_unit":length_unit,
-                "idx": global_idx
+                "idx": global_idx,
+                "remove_init": self.hparams.remove_init,
             }
 
             pred = {
