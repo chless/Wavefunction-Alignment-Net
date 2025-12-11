@@ -15,7 +15,7 @@ import json
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 def process_single_molecule(pred_file_path, gt_file_path,
-    unit="ang", xc="pbe0", basis="def2svp"
+    unit="ang", xc="pbe0", basis="def2svp", debug=False
 ):
     dir_path = os.path.dirname(pred_file_path)
     calc_path = pred_file_path.replace("pred_", "calc_")
@@ -74,9 +74,16 @@ def process_single_molecule(pred_file_path, gt_file_path,
             calc_data["calc_forces"] = calc_forces
 
             # save calc_data
-            torch.save(calc_data, calc_path)
-
-            NEW_CALC = True
+            if not debug:
+                torch.save(calc_data, calc_path)
+                NEW_CALC = True
+        
+        if "remove_init" not in gt_data.keys():
+            remove_init = True
+            gt_data["remove_init"] = remove_init
+            pred_data["remove_init"] = remove_init
+        else:
+            remove_init = gt_data["remove_init"]
 
         if "calc_force" in pred_data and not NEW_CALC:
             pred_energy = pred_data["calc_energy"]
@@ -84,8 +91,10 @@ def process_single_molecule(pred_file_path, gt_file_path,
             pred_mo_energy = pred_data["calc_mo_energy"]
             pred_mo_coeff = pred_data["calc_mo_coeff"]
         else:
+            pred_hamiltonian = pred_data["pred_hamiltonian"] + remove_init * gt_data["init_ham"].squeeze(0)
+
             calc_overlap = calc_data["overlap"].unsqueeze(0) # (gt_overlap - calc_overlap) has float32 precision error (1e^-7)
-            pred_ham = matrix_transform_single(pred_data["pred_hamiltonian"].unsqueeze(0), atoms, convention="back2pyscf")
+            pred_ham = matrix_transform_single(pred_hamiltonian.unsqueeze(0), atoms, convention="back2pyscf")
             
             pred_density, pred_res = calc_dm0_from_ham(atoms, calc_overlap, pred_ham, transform=False)
             pred_energy = calc_mf.energy_tot(pred_density)
@@ -109,8 +118,9 @@ def process_single_molecule(pred_file_path, gt_file_path,
             gt_mo_energy = gt_data["calc_mo_energy"]
             gt_mo_coeff = gt_data["calc_mo_coeff"]
         else:
+            gt_hamiltonian = gt_data["hamiltonian"] + remove_init * gt_data["init_ham"].squeeze(0)
             calc_overlap = calc_data["overlap"].unsqueeze(0) # (gt_overlap - calc_overlap) has float32 precision error (1e^-7)
-            gt_ham = matrix_transform_single(gt_data["hamiltonian"].unsqueeze(0), atoms, convention="back2pyscf")
+            gt_ham = matrix_transform_single(gt_hamiltonian.unsqueeze(0), atoms, convention="back2pyscf")
             
             gt_density, gt_res = calc_dm0_from_ham(atoms, calc_overlap, gt_ham, transform=False)
             gt_energy = calc_mf.energy_tot(gt_density)
@@ -217,13 +227,13 @@ if __name__ == "__main__":
     # Create list of (pred_path, gt_path) tuples
     file_pairs = list(zip(list_pred_paths, list_gt_paths))
     if args.debug:
-        file_pairs = file_pairs[:20]
+        file_pairs = file_pairs[:1]
 
     print(f"Processing {len(file_pairs)} molecules with {num_procs} processes...")
 
     if  num_procs == 1:
         iter_bar = tqdm(file_pairs, desc="Processing molecules")
-        results = [process_single_molecule(pred_path, gt_path) for pred_path, gt_path in iter_bar]
+        results = [process_single_molecule(pred_path, gt_path, debug=args.debug) for pred_path, gt_path in iter_bar]
     else:
         # Process with multiprocessing
         with Pool(processes=num_procs) as pool:
