@@ -162,6 +162,15 @@ def process_single_molecule(pred_file_path, gt_file_path,
     gt_mo_energy_occ = gt_mo_energy[:num_occ]
     calc_mo_energy_occ = calc_mo_energy[:num_occ]
 
+    #hami_humo_lumo, hami_mo_coeff, mo_energy_pred, mo_occ = get_homo_lumo_from_h(calc_mf, pred_ham.squeeze(0).numpy())
+    #target_humo_lumo, target_mo_coeff, mo_energy_target, mo_occ_target = get_homo_lumo_from_h(calc_mf, gt_ham.squeeze(0).numpy())
+    #calc_humo_lumo, calc_mo_coeff, mo_energy_calc, mo_occ_calc = get_homo_lumo_from_h(calc_mf, calc_ham.squeeze(0).numpy())
+
+    #pred_gt_coeff_similarity = torch.cosine_similarity(torch.tensor(pred_mo_coeff), torch.tensor(gt_mo_coeff), dim=0).abs().mean()
+    #pred_calc_coeff_similarity = torch.cosine_similarity(torch.tensor(pred_mo_coeff), torch.tensor(calc_mo_coeff), dim=0).abs().mean()
+    #gt_calc_coeff_similarity = torch.cosine_similarity(torch.tensor(gt_mo_coeff), torch.tensor(calc_mo_coeff), dim=0).abs().mean()
+    
+
 
     result = {
         "data_index": data_index,
@@ -218,6 +227,16 @@ def process_single_molecule(pred_file_path, gt_file_path,
     """
     return result
 
+def get_homo_lumo_from_h(mf: scf.RHF, h: np.ndarray, s1e: np.ndarray=None):
+    if s1e is None:
+        s1e = mf.get_ovlp()
+    mo_energy, mo_coeff = mf.eig(h, s1e)
+    e_idx = np.argsort(mo_energy)
+    e_sort = mo_energy[e_idx]
+    nocc = mf.mol.nelectron // 2
+    homo, lumo = e_sort[nocc-1], e_sort[nocc]
+    mo_occ = mf.get_occ(mo_energy[:nocc], mo_coeff[:, :nocc])
+    return homo-lumo, mo_coeff[:, :nocc], mo_energy[:nocc], mo_occ
 
 
 if __name__ == "__main__":
