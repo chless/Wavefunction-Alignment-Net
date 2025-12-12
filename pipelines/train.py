@@ -90,8 +90,6 @@ def main(config):
         save_last=True,  # Always save the last checkpoint
         filename="{step}-{epoch}-{val_loss:.4f}",
     ))
-    latest_file = get_latest_ckpt(config.log_dir)
-    print("latest_file is: ", latest_file)
     
     if config.ema_decay!=1:
         callbacks.append(EMA(decay=config.ema_decay))
