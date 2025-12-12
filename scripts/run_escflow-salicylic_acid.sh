@@ -1,6 +1,6 @@
 python pipelines/train.py \
 --config-name=config.yaml \
-job_id="md17-salicylic_acid" \
+job_id="md17-salicylic_acid-1213" \
 data_name=rmd-salicylic_acid \
 dataset_path="/data/qhflow-mlff/dataset/md-salicylic_acid" \
 devices=[0,7] \
@@ -11,7 +11,7 @@ hami_weight=1  \
 batch_size=32 \
 schedule=polynomial \
 schedule.lr_warmup_steps=1000 \
-max_steps=100000 \
+max_steps=300000 \
 train_ratio=0.8 \
 val_ratio=0.1 \
 test_ratio=0.1 \
